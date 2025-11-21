@@ -13,18 +13,18 @@ Your build is failing because Render is using `npm` in `apps/api`, but this is a
 
 #### Option A: Use Blueprint (Easiest - Recommended) ✅
 
-1. Push `render-monolith.yaml` to GitHub:
+1. Push `render.yaml` to GitHub:
    ```bash
-   git add render-monolith.yaml
-   git commit -m "Add monolith deployment config"
+   git add render.yaml apps/api apps/web
+   git commit -m "Add deployment config and monolith setup"
    git push
    ```
 
 2. In Render Dashboard:
-   - **Delete** your current failing service
+   - **Delete** your current failing service (if exists)
    - Click "New +" → "Blueprint"
    - Connect your GitHub repo
-   - Select `render-monolith.yaml`
+   - Render will auto-detect `render.yaml`
    - Click "Apply"
    - Wait for deployment
 
