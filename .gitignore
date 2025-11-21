@@ -57,3 +57,16 @@ dump.rdb
 
 # Docker
 docker-compose.override.yml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.spec
+*.exe
+*.app

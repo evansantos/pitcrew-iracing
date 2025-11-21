@@ -112,32 +112,90 @@ async function start() {
   const httpServer = createServer();
   const io = new Server(httpServer, {
     cors: {
-      origin: config.cors.origin,
+      origin: '*', // Allow connections from Python relay on different machines
       credentials: true,
     },
     transports: ['websocket', 'polling'],
   });
 
+  // Track relay connection status
+  let relayConnected = false;
+  let relaySocketId: string | null = null;
+
   io.on('connection', (socket) => {
     logger.info(`Client connected: ${socket.id}`);
 
-    socket.on('disconnect', () => {
-      logger.info(`Client disconnected: ${socket.id}`);
+    // Handle client identification (relay vs webapp)
+    socket.on('identify', (data: { type: 'relay' | 'webapp'; version?: string }) => {
+      if (data.type === 'relay') {
+        relayConnected = true;
+        relaySocketId = socket.id;
+        socket.join('relay');
+        logger.info(`✅ Python relay connected: ${socket.id}, version: ${data.version || 'unknown'}`);
+
+        // Acknowledge relay connection
+        socket.emit('identify:ack', {
+          status: 'connected',
+          message: 'Relay identified and ready to send telemetry'
+        });
+
+        // Notify all webapp clients that relay is connected
+        io.to('webapp').emit('relay:status', { connected: true });
+      } else if (data.type === 'webapp') {
+        socket.join('webapp');
+        logger.info(`Webapp client connected: ${socket.id}`);
+
+        // Send current relay status to new webapp client
+        socket.emit('relay:status', { connected: relayConnected });
+      }
     });
 
+    // Handle telemetry data from Python relay
+    socket.on('relay:telemetry', (telemetryData: any) => {
+      // Broadcast telemetry to all webapp clients
+      io.to('webapp').emit('telemetry:update', telemetryData);
+      io.to('telemetry').emit('telemetry:update', telemetryData);
+    });
+
+    // Handle session data from Python relay
+    socket.on('relay:session', (sessionData: any) => {
+      io.to('webapp').emit('session:update', sessionData);
+      logger.info({ state: sessionData.state }, 'Session state update from relay');
+    });
+
+    // Webapp subscriptions (backward compatibility)
     socket.on('subscribe:telemetry', () => {
       socket.join('telemetry');
+      socket.join('webapp');
       logger.info(`Client ${socket.id} subscribed to telemetry`);
+
+      // Send relay connection status
+      socket.emit('relay:status', { connected: relayConnected });
     });
 
     socket.on('subscribe:strategy', () => {
       socket.join('telemetry');
+      socket.join('webapp');
       logger.info(`Client ${socket.id} subscribed to strategy`);
     });
 
     socket.on('unsubscribe:telemetry', () => {
       socket.leave('telemetry');
       logger.info(`Client ${socket.id} unsubscribed from telemetry`);
+    });
+
+    socket.on('disconnect', () => {
+      // Check if disconnecting client is the relay
+      if (socket.id === relaySocketId) {
+        relayConnected = false;
+        relaySocketId = null;
+        logger.warn(`⚠️  Python relay disconnected: ${socket.id}`);
+
+        // Notify all webapp clients that relay is disconnected
+        io.to('webapp').emit('relay:status', { connected: false });
+      } else {
+        logger.info(`Client disconnected: ${socket.id}`);
+      }
     });
   });
 

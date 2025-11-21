@@ -25,17 +25,33 @@ export function useWebSocket(): UseWebSocketReturn {
     });
 
     newSocket.on('connect', () => {
-      console.log('WebSocket connected');
+      console.log('WebSocket connected to API server');
       setConnected(true);
       setStoreConnected(true);
+
+      // Identify as webapp client
+      newSocket.emit('identify', { type: 'webapp' });
+
+      // Subscribe to telemetry and strategy
       newSocket.emit('subscribe:telemetry');
       newSocket.emit('subscribe:strategy');
     });
 
     newSocket.on('disconnect', () => {
-      console.log('WebSocket disconnected');
+      console.log('WebSocket disconnected from API server');
       setConnected(false);
       setStoreConnected(false);
+    });
+
+    // Handle relay connection status
+    newSocket.on('relay:status', (data: { connected: boolean }) => {
+      console.log(`Relay status: ${data.connected ? 'connected' : 'disconnected'}`);
+      // You can update a store or state here to show relay status in UI
+    });
+
+    // Handle identification acknowledgment
+    newSocket.on('identify:ack', (data: any) => {
+      console.log('Webapp identified:', data);
     });
 
     newSocket.on('telemetry:update', (telemetryData: ProcessedTelemetry) => {
@@ -45,6 +61,11 @@ export function useWebSocket(): UseWebSocketReturn {
     newSocket.on('strategy:update', (strategyData: StrategyRecommendation) => {
       console.log('Strategy update received:', strategyData);
       updateStrategy(strategyData);
+    });
+
+    newSocket.on('session:update', (sessionData: any) => {
+      console.log('Session update received:', sessionData);
+      // Handle session updates from relay
     });
 
     setSocket(newSocket);
