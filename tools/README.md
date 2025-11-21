@@ -47,13 +47,64 @@ The executable will be created in `dist/iRacing-Relay-v3.0.exe`
 
 ## Configuration
 
-Edit these values in `windows-relay-server-socketio.py`:
+The relay supports multiple configuration methods (in order of priority):
 
-```python
-API_HOST = 'localhost'      # Your API server IP
-API_PORT = 3001             # Socket.IO port (default 3001)
-TELEMETRY_RATE = 60         # Update rate in Hz
+### 1. Command-Line Arguments (Highest Priority)
+
+```cmd
+python windows-relay-server-socketio.py --host your-api.onrender.com --port 443 --secure --rate 60
 ```
+
+**Available options:**
+- `--host HOST` - API server hostname
+- `--port PORT` - API server port
+- `--secure` - Use HTTPS/WSS instead of HTTP/WS
+- `--rate RATE` - Telemetry rate in Hz
+- `-h, --help` - Show help
+
+### 2. Environment Variables
+
+**Windows:**
+```cmd
+set API_HOST=your-api.onrender.com
+set API_PORT=443
+set API_SECURE=true
+set TELEMETRY_RATE=60
+python windows-relay-server-socketio.py
+```
+
+**Linux/Mac:**
+```bash
+export API_HOST=your-api.onrender.com
+export API_PORT=443
+export API_SECURE=true
+export TELEMETRY_RATE=60
+python windows-relay-server-socketio.py
+```
+
+### 3. Configuration Scripts (Easiest)
+
+#### For Render.com:
+Edit `connect-to-render.bat` and set your API URL, then run:
+```cmd
+connect-to-render.bat
+```
+
+#### Using Environment Files:
+Copy and edit the example:
+```cmd
+copy relay-config.example.bat relay-config.bat
+# Edit relay-config.bat with your settings
+relay-config.bat
+```
+
+### 4. Defaults (Lowest Priority)
+
+If nothing is specified, defaults to:
+- `API_HOST=localhost`
+- `API_PORT=3001`
+- `API_SECURE=false`
+- `TELEMETRY_RATE=60`
 
 ## Requirements
 

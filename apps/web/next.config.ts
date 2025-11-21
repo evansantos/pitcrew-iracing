@@ -3,6 +3,10 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@iracing-race-engineer/shared'],
+
+  // Enable standalone output for production deployment
+  output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
+
   experimental: {
     optimizePackageImports: ['lucide-react', 'recharts'],
   },

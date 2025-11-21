@@ -1,8 +1,11 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import fastifyStatic from '@fastify/static';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
 import { telemetryRoutes } from './modules/telemetry/routes.js';
@@ -11,6 +14,9 @@ import { raceEngineerRoutes } from './modules/race-engineer/routes.js';
 import { redisService } from './services/cache/index.js';
 import { testConnection, closeDatabase } from './db/index.js';
 import { RaceEngineerLLM } from './services/ai/race-engineer-llm.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 async function start() {
   // Initialize Redis
@@ -94,10 +100,45 @@ async function start() {
     };
   });
 
-  // Register routes
+  // Register API routes
   await fastify.register(telemetryRoutes, { prefix: '/api/telemetry' });
   await fastify.register(sessionRoutes, { prefix: '/api/session' });
   await fastify.register(raceEngineerRoutes, { prefix: '/api/race-engineer' });
+
+  // Serve Next.js static export in production
+  if (process.env.NODE_ENV === 'production') {
+    const webAppExportPath = join(__dirname, '../../../web/out');
+
+    try {
+      const fs = await import('fs');
+      if (fs.existsSync(webAppExportPath)) {
+        // Serve the exported Next.js site
+        await fastify.register(fastifyStatic, {
+          root: webAppExportPath,
+          prefix: '/',
+        });
+
+        // Fallback route for client-side routing
+        const indexPath = join(webAppExportPath, 'index.html');
+        fastify.setNotFoundHandler(async (request, reply) => {
+          // If it's an API route, return 404
+          if (request.url.startsWith('/api/') || request.url.startsWith('/socket.io/')) {
+            return reply.code(404).send({ error: 'Not found' });
+          }
+          // Otherwise serve index.html for client-side routing
+          const indexContent = fs.readFileSync(indexPath, 'utf-8');
+          return reply.type('text/html').send(indexContent);
+        });
+
+        logger.info('✅ Serving Next.js webapp from API server');
+      } else {
+        logger.warn('⚠️  Webapp build directory not found - API-only mode');
+      }
+    } catch (error) {
+      logger.warn('⚠️  Could not serve webapp files - they may not be built yet');
+      logger.warn('   This is OK for API-only deployment');
+    }
+  }
 
   // Start HTTP server
   try {
