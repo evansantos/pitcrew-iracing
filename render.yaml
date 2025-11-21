@@ -68,5 +68,5 @@ databases:
   # Redis Cache
   - name: pitcrew-redis
     plan: free  # Change to 'starter' for production
-    maxmemoryPolicy: allkeys-lru
     ipAllowList: []  # Allow all IPs
+    # Note: maxmemoryPolicy can be configured in Render dashboard after creation
