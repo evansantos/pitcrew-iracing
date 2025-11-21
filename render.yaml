@@ -58,15 +58,15 @@ services:
       # - key: OLLAMA_BASE_URL
       #   value: http://your-ollama-instance:11434
 
+  # Redis Cache Service
+  - type: redis
+    name: pitcrew-redis
+    plan: free  # Change to 'starter' for production
+    ipAllowList: []  # Allow all IPs
+
 databases:
   # PostgreSQL Database
   - name: pitcrew-db
     databaseName: pitcrew_iracing
     plan: free  # Change to 'starter' for production
     ipAllowList: []  # Allow all IPs
-
-  # Redis Cache
-  - name: pitcrew-redis
-    plan: free  # Change to 'starter' for production
-    ipAllowList: []  # Allow all IPs
-    # Note: maxmemoryPolicy can be configured in Render dashboard after creation
