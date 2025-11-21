@@ -1,0 +1,39 @@
+{
+  "name": "@iracing-race-engineer/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types/telemetry": {
+      "types": "./dist/types/telemetry.d.ts",
+      "import": "./dist/types/telemetry.js"
+    },
+    "./types/session": {
+      "types": "./dist/types/session.d.ts",
+      "import": "./dist/types/session.js"
+    },
+    "./types/strategy": {
+      "types": "./dist/types/strategy.d.ts",
+      "import": "./dist/types/strategy.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3"
+  }
+}
