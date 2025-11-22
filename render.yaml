@@ -9,14 +9,14 @@ services:
     runtime: node
     plan: free  # Change to 'starter' for production ($7/month - no sleeping)
 
-    # Build both projects
+    # Build shared package first, then API and web
     buildCommand: |
       npm install -g pnpm &&
       pnpm install --no-frozen-lockfile --prod=false &&
+      pnpm run build --filter=@iracing-race-engineer/shared &&
       pnpm run build --filter=@iracing-race-engineer/api &&
       pnpm run build --filter=@iracing-race-engineer/web &&
       echo "=== Verifying build output ===" &&
-      ls -la apps/api/ &&
       ls -la apps/api/dist/ &&
       echo "=== Build verification complete ==="
 
