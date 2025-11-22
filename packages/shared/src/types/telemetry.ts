@@ -236,19 +236,23 @@ export interface OpponentData {
   driverName: string;
   carNumber: string;
   teamName?: string;
-  carClass: string;
+  carName?: string;
+  carClass?: string;
   lap: number;
   lapDistPct: number;
   position: number;
   classPosition: number;
   lastLapTime: number;
   bestLapTime: number;
-  estimatedLapTime: number;
+  estimatedLapTime?: number;
   gapToPlayer: number;
-  gapToLeader: number;
-  isOnPitRoad: boolean;
-  pitStopCount: number;
-  trackSurface: TrackSurface;
+  gapToLeader?: number;
+  isAhead?: boolean;
+  isBattle?: boolean;
+  onPitRoad?: boolean;
+  isOnPitRoad?: boolean;  // Alias for backward compatibility
+  pitStopCount?: number;
+  trackSurface: number;
 }
 
 export enum TrackSurface {

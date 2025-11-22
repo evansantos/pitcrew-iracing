@@ -51,6 +51,7 @@ Examples:
 import argparse
 import logging
 import os
+import random
 import socket
 import sys
 import time
@@ -232,6 +233,97 @@ def safe_get(ir_obj, key, default=None):
         return default
 
 
+def _get_opponents_data(ir_data) -> list:
+    """Extract opponent data from iRacing SDK"""
+    try:
+        # Get player car index
+        player_car_idx = safe_get(ir_data, 'PlayerCarIdx', -1)
+        if player_car_idx == -1:
+            return []
+
+        # Get driver info
+        driver_info = safe_get(ir_data, 'DriverInfo', {})
+        if not isinstance(driver_info, dict):
+            return []
+
+        drivers = driver_info.get('Drivers', [])
+        if not drivers:
+            return []
+
+        # Get telemetry arrays for all cars
+        car_idx_position = safe_get(ir_data, 'CarIdxPosition', [])
+        car_idx_class_position = safe_get(ir_data, 'CarIdxClassPosition', [])
+        car_idx_lap = safe_get(ir_data, 'CarIdxLap', [])
+        car_idx_lap_dist_pct = safe_get(ir_data, 'CarIdxLapDistPct', [])
+        car_idx_last_lap_time = safe_get(ir_data, 'CarIdxF2Time', [])
+        car_idx_best_lap_time = safe_get(ir_data, 'CarIdxBestLapTime', [])
+        car_idx_on_pit_road = safe_get(ir_data, 'CarIdxOnPitRoad', [])
+        car_idx_track_surface = safe_get(ir_data, 'CarIdxTrackSurface', [])
+
+        # Get player's lap distance for gap calculation
+        player_lap_dist_pct = car_idx_lap_dist_pct[player_car_idx] if player_car_idx < len(car_idx_lap_dist_pct) else 0
+        player_lap = car_idx_lap[player_car_idx] if player_car_idx < len(car_idx_lap) else 0
+
+        opponents = []
+
+        for idx, driver in enumerate(drivers):
+            # Skip player
+            if idx == player_car_idx:
+                continue
+
+            # Skip cars not in session (position 0 means not active)
+            if idx >= len(car_idx_position) or car_idx_position[idx] == 0:
+                continue
+
+            # Get lap distance for gap calculation
+            opponent_lap_dist_pct = car_idx_lap_dist_pct[idx] if idx < len(car_idx_lap_dist_pct) else 0
+            opponent_lap = car_idx_lap[idx] if idx < len(car_idx_lap) else 0
+
+            # Calculate gap in track position percentage
+            # Positive = ahead of player, Negative = behind player
+            gap_pct = opponent_lap_dist_pct - player_lap_dist_pct
+
+            # Adjust for lap difference
+            lap_diff = opponent_lap - player_lap
+            gap_pct += lap_diff  # Each lap difference is 1.0
+
+            # Normalize gap to -0.5 to 0.5 range (wrapping around track)
+            if gap_pct > 0.5:
+                gap_pct -= 1.0
+            elif gap_pct < -0.5:
+                gap_pct += 1.0
+
+            opponent_data = {
+                'carIdx': idx,
+                'driverName': driver.get('UserName', 'Unknown'),
+                'carNumber': driver.get('CarNumber', '0'),
+                'teamName': driver.get('TeamName', ''),
+                'carName': driver.get('CarScreenName', 'Unknown'),
+                'position': car_idx_position[idx] if idx < len(car_idx_position) else 0,
+                'classPosition': car_idx_class_position[idx] if idx < len(car_idx_class_position) else 0,
+                'lap': opponent_lap,
+                'lapDistPct': opponent_lap_dist_pct,
+                'lastLapTime': car_idx_last_lap_time[idx] if idx < len(car_idx_last_lap_time) else 0,
+                'bestLapTime': car_idx_best_lap_time[idx] if idx < len(car_idx_best_lap_time) else 0,
+                'onPitRoad': bool(car_idx_on_pit_road[idx]) if idx < len(car_idx_on_pit_road) else False,
+                'trackSurface': car_idx_track_surface[idx] if idx < len(car_idx_track_surface) else -1,
+                'gapToPlayer': gap_pct,  # Percentage of track distance
+                'isAhead': gap_pct > 0,
+                'isBattle': abs(gap_pct) < 0.05,  # Within 5% of track distance
+            }
+
+            opponents.append(opponent_data)
+
+        # Sort by position
+        opponents.sort(key=lambda x: x['position'])
+
+        return opponents
+
+    except Exception as e:
+        logger.warning(f"Error extracting opponent data: {e}")
+        return []
+
+
 def transform_telemetry(ir_data) -> Dict[str, Any]:
     """Transform iRacing SDK data to our application format"""
     # Handle nested DriverInfo
@@ -344,6 +436,8 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
             'timeRemaining': safe_get(ir_data, 'SessionTimeRemain', 0),
             'lapsRemaining': safe_get(ir_data, 'SessionLapsRemain', 0),
         },
+
+        'opponents': _get_opponents_data(ir_data),
     }
 
 
@@ -385,9 +479,90 @@ def on_identify_ack(data):
     handshake_complete.set()  # Signal success
 
 
+def _generate_mock_opponents(player_lap: int, player_lap_pct: float) -> list:
+    """Generate mock opponent data for testing"""
+    mock_drivers = [
+        {'name': 'Lewis Hamilton', 'carNumber': '44', 'team': 'Mercedes-AMG', 'carName': 'Mercedes W14'},
+        {'name': 'Max Verstappen', 'carNumber': '1', 'team': 'Red Bull Racing', 'carName': 'RB19'},
+        {'name': 'Charles Leclerc', 'carNumber': '16', 'team': 'Scuderia Ferrari', 'carName': 'Ferrari SF-23'},
+        {'name': 'Lando Norris', 'carNumber': '4', 'team': 'McLaren', 'carName': 'McLaren MCL60'},
+        {'name': 'Fernando Alonso', 'carNumber': '14', 'team': 'Aston Martin', 'carName': 'Aston Martin AMR23'},
+        {'name': 'Carlos Sainz', 'carNumber': '55', 'team': 'Scuderia Ferrari', 'carName': 'Ferrari SF-23'},
+        {'name': 'Sergio Perez', 'carNumber': '11', 'team': 'Red Bull Racing', 'carName': 'RB19'},
+        {'name': 'George Russell', 'carNumber': '63', 'team': 'Mercedes-AMG', 'carName': 'Mercedes W14'},
+    ]
+
+    opponents = []
+    # Player is in position 5
+    player_position = 5
+
+    for idx, driver in enumerate(mock_drivers):
+        # Position relative to player (player is P5)
+        position = idx + 1 if idx < player_position - 1 else idx + 2
+
+        # Calculate gap based on position
+        if position < player_position:
+            # Cars ahead
+            gap_pct = (player_position - position) * 0.03 + random.uniform(0.01, 0.05)
+        else:
+            # Cars behind
+            gap_pct = -(position - player_position) * 0.03 - random.uniform(0.01, 0.05)
+
+        # Adjust lap based on gap (cars more than half a lap ahead/behind)
+        opponent_lap = player_lap
+        if gap_pct > 0.5:
+            opponent_lap += 1
+            gap_pct -= 1.0
+        elif gap_pct < -0.5:
+            opponent_lap -= 1
+            gap_pct += 1.0
+
+        # Calculate opponent's lap distance
+        opponent_lap_pct = player_lap_pct + gap_pct
+        if opponent_lap_pct > 1.0:
+            opponent_lap_pct -= 1.0
+            opponent_lap += 1
+        elif opponent_lap_pct < 0:
+            opponent_lap_pct += 1.0
+            opponent_lap -= 1
+
+        # Some variation in lap times
+        base_lap_time = 85.0
+        last_lap_time = base_lap_time + random.uniform(-1.5, 1.5)
+        best_lap_time = base_lap_time - random.uniform(0, 2.5)
+
+        # Randomly put some cars in pits
+        on_pit_road = random.random() < 0.1 and position > 3
+
+        opponent_data = {
+            'carIdx': idx + 10,  # Offset to avoid conflict with player
+            'driverName': driver['name'],
+            'carNumber': driver['carNumber'],
+            'teamName': driver['team'],
+            'carName': driver['carName'],
+            'position': position,
+            'classPosition': position,
+            'lap': max(0, opponent_lap),
+            'lapDistPct': max(0, min(1, opponent_lap_pct)),
+            'lastLapTime': round(last_lap_time, 3),
+            'bestLapTime': round(best_lap_time, 3),
+            'onPitRoad': on_pit_road,
+            'trackSurface': 1 if not on_pit_road else 0,  # 1 = on track, 0 = off track/pit
+            'gapToPlayer': round(gap_pct, 4),
+            'isAhead': gap_pct > 0,
+            'isBattle': abs(gap_pct) < 0.05,
+        }
+
+        opponents.append(opponent_data)
+
+    # Sort by position
+    opponents.sort(key=lambda x: x['position'])
+
+    return opponents
+
+
 def generate_mock_telemetry() -> Dict[str, Any]:
     """Generate realistic mock telemetry data for testing"""
-    import random
     import math
 
     # Simulate a race lap progression
@@ -517,6 +692,8 @@ def generate_mock_telemetry() -> Dict[str, Any]:
             'timeRemaining': 3600 - (current_time % 3600),
             'lapsRemaining': 50 - lap_num,
         },
+
+        'opponents': _generate_mock_opponents(lap_num, lap_progress),
     }
 
 
