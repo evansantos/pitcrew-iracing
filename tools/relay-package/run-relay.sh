@@ -1,6 +1,9 @@
 #!/bin/bash
 # iRacing Race Engineer Relay - Mac/Linux Launcher
 
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 echo "================================================"
 echo "iRacing Race Engineer - Relay Server"
 echo "================================================"
@@ -14,6 +17,9 @@ echo "  - For real iRacing data, use Windows version"
 echo "  - Press Ctrl+C to stop"
 echo "================================================"
 echo ""
+
+# Change to script directory
+cd "$SCRIPT_DIR"
 
 # Make executable if not already
 chmod +x iRacing-Relay-v3.0
