@@ -25,8 +25,14 @@ pip install pyirsdk python-socketio websocket-client pyinstaller
 
 echo.
 echo [3/4] Building executable with PyInstaller...
+echo Default values (hardcoded in executable):
+echo   - Host: pitcrew-iracing.onrender.com
+echo   - Port: 443
+echo   - Secure: Yes (HTTPS/WSS)
+echo   - Rate: 16 Hz
+echo.
 pyinstaller --onefile ^
-    --name "iRacing-Relay-v3.0" ^
+    --name "iRacing-Relay-v3.1" ^
     --icon=NONE ^
     --console ^
     --clean ^
@@ -38,7 +44,7 @@ echo [4/4] Build complete!
 echo.
 echo ================================================
 echo The executable is located at:
-echo   dist\iRacing-Relay-v3.0.exe
+echo   dist\iRacing-Relay-v3.1.exe
 echo ================================================
 echo.
 echo You can now copy this .exe file to any Windows machine
