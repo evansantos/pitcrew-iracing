@@ -549,7 +549,11 @@ def main():
 
     # Build API URL based on secure flag
     protocol = 'https' if API_SECURE else 'http'
-    api_url = f"{protocol}://{API_HOST}:{API_PORT}"
+    # Don't include port if it's the standard port for the protocol
+    if (API_SECURE and API_PORT == 443) or (not API_SECURE and API_PORT == 80):
+        api_url = f"{protocol}://{API_HOST}"
+    else:
+        api_url = f"{protocol}://{API_HOST}:{API_PORT}"
 
     print("")
     print("=" * 50)
