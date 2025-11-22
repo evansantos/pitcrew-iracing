@@ -289,10 +289,10 @@ async function start() {
 
   // Initialize and start enhanced telemetry service
   // In production, data comes from Socket.IO relay, so we don't need the enhanced service
-  // Only start it in development or when explicitly configured
+  // ONLY start it in development mode - NEVER in production
   let enhancedTelemetryService: any = null;
 
-  if (config.env === 'development' || (config.iracing.mode === 'local' && config.iracing.relayHost)) {
+  if (config.env === 'development') {
     const { enhancedTelemetryService: service } = await import('./modules/telemetry/enhanced-service.js');
     enhancedTelemetryService = service;
 
