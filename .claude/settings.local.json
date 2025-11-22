@@ -2,7 +2,18 @@
   "permissions": {
     "allow": [
       "Bash(pkill:*)",
-      "Bash(docker logs:*)"
+      "Bash(docker logs:*)",
+      "mcp__render__list_workspaces",
+      "mcp__render__list_services",
+      "mcp__render__list_deploys",
+      "mcp__render__get_deploy",
+      "mcp__render__list_logs",
+      "mcp__render__get_service",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "mcp__render__list_postgres_instances",
+      "mcp__render__get_postgres"
     ],
     "deny": [],
     "ask": []

@@ -19,7 +19,7 @@ python3 --version
 
 echo ""
 echo "[2/4] Installing dependencies..."
-pip3 install pyirsdk python-socketio pyinstaller
+pip3 install pyirsdk python-socketio websocket-client pyinstaller
 
 echo ""
 echo "[3/4] Building executable with PyInstaller..."

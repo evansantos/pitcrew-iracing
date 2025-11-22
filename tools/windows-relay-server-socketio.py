@@ -70,7 +70,11 @@ except ImportError:
 
 try:
     import socketio
-    print(f"[Relay] ✅ python-socketio version: {socketio.__version__}")
+    try:
+        version = socketio.__version__
+        print(f"[Relay] ✅ python-socketio version: {version}")
+    except AttributeError:
+        print("[Relay] ✅ python-socketio available")
 except ImportError:
     print("[Relay] ❌ python-socketio package not found!")
     print("[Relay] Install with: pip install python-socketio")
