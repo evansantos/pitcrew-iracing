@@ -54,6 +54,7 @@ import os
 import socket
 import sys
 import time
+import threading
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -205,6 +206,10 @@ sio = socketio.Client(
 ir: Optional[Any] = None
 is_connected_to_iracing = False
 
+# Handshake tracking
+handshake_complete = threading.Event()
+handshake_error = None
+
 
 def get_local_ip() -> str:
     """Get local IP address"""
@@ -293,7 +298,11 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
 # Socket.IO event handlers
 @sio.event
 def connect():
+    global handshake_error
     logger.info("✅ Connected to API server")
+    # Reset handshake state
+    handshake_complete.clear()
+    handshake_error = None
     # Identify as relay with racer name
     sio.emit('identify', {
         'type': 'relay',
@@ -305,17 +314,23 @@ def connect():
 
 @sio.event
 def connect_error(data):
+    global handshake_error
+    handshake_error = str(data)
     logger.error(f"❌ Connection error: {data}")
+    handshake_complete.set()  # Signal failure
 
 
 @sio.event
 def disconnect():
     logger.warning("⚠️  Disconnected from API server")
+    handshake_complete.clear()
 
 
 @sio.on('identify:ack')
 def on_identify_ack(data):
     logger.info(f"✅ Relay identified: {data.get('message', 'OK')}")
+    logger.info(f"✅ Handshake successful - ready to send telemetry")
+    handshake_complete.set()  # Signal success
 
 
 def generate_mock_telemetry() -> Dict[str, Any]:
@@ -579,7 +594,48 @@ def main():
         # Socket.IO will automatically use wss:// for https:// URLs
         sio.connect(api_url, transports=['websocket', 'polling'])
 
-        # Start telemetry loop in main thread
+        # Wait for handshake to complete with timeout
+        logger.info("Waiting for handshake with API server...")
+        handshake_timeout = 10  # seconds
+        if not handshake_complete.wait(timeout=handshake_timeout):
+            # Handshake timed out
+            logger.error("=" * 50)
+            logger.error("❌ HANDSHAKE TIMEOUT")
+            logger.error("=" * 50)
+            logger.error("The relay connected to the server but did not receive")
+            logger.error("a handshake acknowledgment within 10 seconds.")
+            logger.error("")
+            logger.error("Possible causes:")
+            logger.error("  1. API server is not responding properly")
+            logger.error("  2. Network issues or firewall blocking")
+            logger.error("  3. API server is still starting up (try again in a minute)")
+            logger.error("")
+            logger.error("Please check:")
+            logger.error(f"  - API server status at: {api_url}/health")
+            logger.error("  - Your network connection")
+            logger.error("  - Firewall settings")
+            logger.error("=" * 50)
+            sio.disconnect()
+            sys.exit(1)
+
+        # Check if handshake failed with an error
+        if handshake_error:
+            logger.error("=" * 50)
+            logger.error("❌ HANDSHAKE FAILED")
+            logger.error("=" * 50)
+            logger.error(f"Error: {handshake_error}")
+            logger.error("")
+            logger.error("The relay could not establish a connection with the API server.")
+            logger.error("")
+            logger.error("Please check:")
+            logger.error(f"  - API server is running at: {api_url}")
+            logger.error("  - Your internet connection")
+            logger.error("  - The API server logs for more details")
+            logger.error("=" * 50)
+            sio.disconnect()
+            sys.exit(1)
+
+        # Handshake successful - start telemetry loop
         if MOCK_MODE:
             mock_telemetry_loop()
         else:
