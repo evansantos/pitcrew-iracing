@@ -40,6 +40,10 @@ services:
       - key: CORS_ORIGIN
         value: "*"
 
+      # iRacing Telemetry Mode (remote = use relay, NOT mock data)
+      - key: IRACING_MODE
+        value: remote
+
       # Database (auto-created if using Blueprint)
       - key: DATABASE_URL
         fromDatabase:
