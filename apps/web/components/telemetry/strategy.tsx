@@ -84,14 +84,17 @@ export function Strategy() {
     );
   }
 
-  // Fuel calculations - use backend data if available, otherwise calculate locally
+  // Fuel calculations - use relay's improved calculation or backend data
   const currentLap = Number(data.player.lap) || 0;
-  const raceLapsRemaining = Number(data.session.lapsRemaining) || 0;
+  const rawRaceLapsRemaining = Number(data.session.lapsRemaining) || 0;
+
+  // Handle unlimited sessions (practice/qualify) - iRacing sets to 32767
+  const isUnlimitedSession = rawRaceLapsRemaining > 10000;
+  const raceLapsRemaining = isUnlimitedSession ? 999 : rawRaceLapsRemaining;
 
   let fuelPerLap = 0;
   let fuelLapsRemaining = 0;
   let canFinishOnFuel = true;
-  let avgLapTime = data.player.lastLapTime || 0;
 
   if (useBackendStrategy && backendStrategy.fuelStrategy) {
     // Use backend fuel strategy
@@ -99,32 +102,12 @@ export function Strategy() {
     canFinishOnFuel = backendStrategy.fuelStrategy.canFinish;
     fuelPerLap = backendStrategy.fuelStrategy.averageConsumption;
   } else {
-    // Fallback to local calculation
-    // Calculate fuel per lap with fallback methods
-    avgLapTime = data.player.lastLapTime || 0;
+    // Use relay's fuel calculation (uses median of last 5-10 laps)
+    fuelLapsRemaining = data.fuel.lapsRemaining || 0;
+    fuelPerLap = data.fuel.avgPerLap || 2.5; // Use relay's median calculation
 
-    // Method 1: Use last lap time if available
-    if (avgLapTime > 0 && data.fuel.usePerHour > 0) {
-      fuelPerLap = (data.fuel.usePerHour / 3600) * avgLapTime;
-    }
-    // Method 2: Estimate lap time from session time remaining and laps remaining
-    else if (raceLapsRemaining > 0 && data.session.timeRemaining > 0 && data.fuel.usePerHour > 0) {
-      avgLapTime = data.session.timeRemaining / raceLapsRemaining;
-      fuelPerLap = (data.fuel.usePerHour / 3600) * avgLapTime;
-    }
-    // Method 3: Estimate based on average lap time of 90 seconds
-    else if (data.fuel.usePerHour > 0) {
-      avgLapTime = 90;
-      fuelPerLap = (data.fuel.usePerHour / 3600) * avgLapTime;
-    }
-
-    fuelLapsRemaining = fuelPerLap > 0 && Number.isFinite(data.fuel.level)
-      ? Math.floor(data.fuel.level / fuelPerLap)
-      : 999;
-
-    canFinishOnFuel = Number.isFinite(fuelLapsRemaining) && Number.isFinite(raceLapsRemaining)
-      ? fuelLapsRemaining >= raceLapsRemaining
-      : true;
+    // In unlimited sessions, always can finish
+    canFinishOnFuel = isUnlimitedSession ? true : fuelLapsRemaining >= raceLapsRemaining;
   }
 
   // Tire calculations
@@ -141,10 +124,19 @@ export function Strategy() {
   const needsPitForTires = tireHealth < 30;
   const needsPit = needsPitForFuel || needsPitForTires;
 
-  // Calculate fuel to add (to finish race + 2 lap safety margin)
-  const fuelToAdd = needsPitForFuel && Number.isFinite(raceLapsRemaining) && Number.isFinite(fuelPerLap) && Number.isFinite(data.fuel.level)
-    ? Math.max(0, ((raceLapsRemaining + 2) * fuelPerLap) - data.fuel.level)
-    : 0;
+  // Calculate fuel to add
+  let fuelToAdd = 0;
+  if (needsPitForFuel && Number.isFinite(fuelPerLap) && Number.isFinite(data.fuel.level)) {
+    if (isUnlimitedSession) {
+      // For unlimited sessions (practice/qualify), suggest filling to reasonable level
+      // Calculate fuel for next 20 laps
+      const targetLaps = 20;
+      fuelToAdd = Math.max(0, (targetLaps * fuelPerLap) - data.fuel.level);
+    } else if (Number.isFinite(raceLapsRemaining)) {
+      // For race, calculate to finish + 2 lap safety margin
+      fuelToAdd = Math.max(0, ((raceLapsRemaining + 2) * fuelPerLap) - data.fuel.level);
+    }
+  }
 
   // Calculate optimal pit lap
   let optimalPitLap = 0;
@@ -507,12 +499,15 @@ export function Strategy() {
                           Add <span className="font-mono font-bold text-foreground">{fuelToAdd.toFixed(1)}L</span> fuel
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          (Enough for {raceLapsRemaining} laps + 2 lap safety margin)
+                          {isUnlimitedSession
+                            ? '(Enough for 20 laps)'
+                            : `(Enough for ${raceLapsRemaining} laps + 2 lap safety margin)`
+                          }
                         </div>
                       </div>
                     ) : (
                       <div className="mt-1 text-sm text-muted-foreground">
-                        Current fuel sufficient to finish
+                        Current fuel sufficient {isUnlimitedSession ? 'for session' : 'to finish'}
                       </div>
                     )}
                   </div>
@@ -702,7 +697,7 @@ export function Strategy() {
             <div className="rounded-lg bg-secondary p-3">
               <div className="text-xs text-muted-foreground">Race Laps Left</div>
               <div className="mt-1 text-xl font-bold">
-                {raceLapsRemaining}
+                {isUnlimitedSession ? 'Unlimited' : raceLapsRemaining}
               </div>
             </div>
           </div>

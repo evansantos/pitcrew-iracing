@@ -33,18 +33,18 @@ export function PitStrategy() {
     );
   }
 
-  // Fuel calculations
+  // Fuel calculations - use relay's improved calculation
   const currentLap = data.player.lap || 0;
-  const fuelPerLap = currentLap > 0 && data.fuel.usePerHour > 0
-    ? (data.fuel.usePerHour / 60) * (data.player.lastLapTime / 60)
-    : 0;
 
-  const fuelLapsRemaining = fuelPerLap > 0
-    ? Math.floor(data.fuel.level / fuelPerLap)
-    : 0;
+  // Use fuel laps remaining from relay (uses median of last 5-10 laps)
+  const fuelLapsRemaining = data.fuel.lapsRemaining || 0;
 
-  const raceLapsRemaining = data.session.lapsRemaining || 0;
-  const canFinishOnFuel = fuelLapsRemaining >= raceLapsRemaining;
+  // Handle race laps remaining - iRacing sets to 32767 for unlimited sessions
+  const rawRaceLapsRemaining = data.session.lapsRemaining || 0;
+  const isUnlimitedSession = rawRaceLapsRemaining > 10000; // Likely practice/qualify
+  const raceLapsRemaining = isUnlimitedSession ? 999 : rawRaceLapsRemaining;
+
+  const canFinishOnFuel = isUnlimitedSession ? true : fuelLapsRemaining >= raceLapsRemaining;
 
   // Tire calculations
   const avgTireWear = (
@@ -341,7 +341,7 @@ export function PitStrategy() {
             <div className="rounded-lg bg-secondary p-3">
               <div className="text-xs text-muted-foreground">Race Laps Left</div>
               <div className="mt-1 text-xl font-bold">
-                {raceLapsRemaining}
+                {isUnlimitedSession ? 'Unlimited' : raceLapsRemaining}
               </div>
             </div>
           </div>
