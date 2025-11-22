@@ -20,7 +20,7 @@ services:
       ls -la apps/api/dist/ &&
       echo "=== Build verification complete ===" &&
       echo "=== Running database migrations ===" &&
-      pnpm --filter=@iracing-race-engineer/api run db:push &&
+      cd apps/api && pnpm exec drizzle-kit push --force &&
       echo "=== Database migrations complete ==="
 
     # Start only the API (it will serve the webapp files)
