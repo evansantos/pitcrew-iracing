@@ -107,7 +107,7 @@ async function start() {
 
   // Serve Next.js static export in production
   if (process.env.NODE_ENV === 'production') {
-    const webAppExportPath = join(__dirname, '../../../web/out');
+    const webAppExportPath = join(__dirname, '../../web/out');
 
     try {
       const fs = await import('fs');
