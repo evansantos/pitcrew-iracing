@@ -243,7 +243,7 @@ async function start() {
       logger.info(`Client ${socket.id} subscribed to telemetry`);
 
       // Send relay connection status
-      socket.emit('relay:status', { connected: relayConnected });
+      socket.emit('relay:status', { connected: relayConnections.size > 0 });
     });
 
     socket.on('subscribe:strategy', () => {
