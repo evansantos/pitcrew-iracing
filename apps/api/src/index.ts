@@ -323,47 +323,13 @@ async function start() {
   // No need for separate httpServer.listen()
   logger.info(`Socket.IO attached to Fastify server on port ${config.api.port}`);
 
-  // Initialize and start enhanced telemetry service
-  // In production, data comes from Socket.IO relay, so we don't need the enhanced service
-  // ONLY start it in development mode - NEVER in production
-  let enhancedTelemetryService: any = null;
-
-  if (config.env === 'production') {
-    const { enhancedTelemetryService: service } = await import(
-      './modules/telemetry/enhanced-service.js'
-    );
-    enhancedTelemetryService = service;
-
-    // Listen for telemetry data and broadcast to connected clients
-    enhancedTelemetryService.on('telemetry', (data: any) => {
-      io.to('telemetry').emit('telemetry:update', data);
-    });
-
-    // Listen for strategy updates and broadcast to connected clients
-    enhancedTelemetryService.on('strategy', (strategyState: any) => {
-      io.to('telemetry').emit('strategy:update', strategyState);
-    });
-
-    // Start telemetry processing
-    try {
-      await enhancedTelemetryService.connect();
-      logger.info('Enhanced telemetry service started with strategy engine');
-    } catch (error) {
-      logger.warn({ error }, 'Failed to start enhanced telemetry service - continuing without it');
-      enhancedTelemetryService = null;
-    }
-  } else {
-    logger.info('Enhanced telemetry service disabled - using Socket.IO relay for telemetry data');
-  }
+  // Mock telemetry service completely removed
+  // All telemetry data now comes exclusively from Socket.IO relay
+  logger.info('✅ Using Socket.IO relay for all telemetry data (mock service removed)');
 
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down gracefully...');
-
-    // Disconnect telemetry service if it was started
-    if (enhancedTelemetryService) {
-      await enhancedTelemetryService.disconnect();
-    }
 
     // Close Redis connection
     if (redisService.isReady()) {

@@ -22,18 +22,12 @@ export function RacerSelector() {
         onChange={(e) => setSelectedRacer(e.target.value || null)}
         className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
-        <option value="">All Racers</option>
         {availableRacers.map((racer) => (
           <option key={racer.name} value={racer.name}>
             {racer.name} {racer.mock ? '(Mock)' : ''}
           </option>
         ))}
       </select>
-      {selectedRacer && (
-        <div className="text-xs text-muted-foreground">
-          Viewing: {selectedRacer}
-        </div>
-      )}
     </div>
   );
 }
