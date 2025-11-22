@@ -215,14 +215,14 @@ async function start() {
             mock: relayConnections.get(racerRelays.get(name)!)?.mock || false,
           }));
           logger.info(
-            { availableRacers, newRacer: racerName },
-            'Broadcasting updated racer list to webapps'
+            `🏁 Racer "${racerName}" connected${data.mock ? ' (MOCK MODE)' : ''} | ` +
+            `Total racers: ${availableRacers.length} | ` +
+            `Active: ${availableRacers.map(r => r.name).join(', ')}`
           );
           io.to('webapp').emit('racers:list', availableRacers);
           io.to('webapp').emit('relay:status', { connected: true, racerName });
         } else if (data.type === 'webapp') {
           socket.join('webapp');
-          logger.info(`Webapp client connected: ${socket.id}`);
 
           // Send available racers to new webapp client
           const availableRacers = Array.from(racerRelays.keys()).map((name) => ({
@@ -230,12 +230,8 @@ async function start() {
             mock: relayConnections.get(racerRelays.get(name)!)?.mock || false,
           }));
           logger.info(
-            {
-              webappId: socket.id,
-              availableRacers,
-              relayCount: relayConnections.size,
-            },
-            'Sending initial racer list to new webapp client'
+            `🌐 Webapp connected | ` +
+            `Available racers: ${availableRacers.length > 0 ? availableRacers.map(r => r.name).join(', ') : 'None'}`
           );
           socket.emit('racers:list', availableRacers);
           socket.emit('relay:status', { connected: relayConnections.size > 0 });
@@ -245,14 +241,15 @@ async function start() {
 
     // Handle telemetry data from Python relay
     socket.on('relay:telemetry', (data: { racerName: string; telemetry: any }) => {
-      logger.debug(
-        {
-          racerName: data.racerName,
-          hasData: !!data.telemetry,
-          speed: data.telemetry?.player?.speed,
-          lap: data.telemetry?.player?.lap,
-        },
-        'Received telemetry from relay, broadcasting to webapps'
+      const player = data.telemetry?.player;
+      const session = data.telemetry?.session;
+
+      logger.info(
+        `📊 [${data.racerName}] Lap ${player?.lap || 0} | ` +
+        `Speed: ${Math.round(player?.speed || 0)} km/h | ` +
+        `Gear: ${player?.gear || 0} | ` +
+        `Fuel: ${player?.fuelLevel?.toFixed(1) || 0}L | ` +
+        `Position: ${session?.position || 'N/A'}/${session?.totalDrivers || 'N/A'}`
       );
 
       // Broadcast telemetry to all webapp clients with racer info
@@ -300,20 +297,15 @@ async function start() {
         const racerName = relayInfo.racerName;
         relayConnections.delete(socket.id);
         racerRelays.delete(racerName);
-        logger.warn(`⚠️  Python relay disconnected: ${socket.id}, racer: ${racerName}`);
 
         // Notify all webapp clients about updated racer list
         const availableRacers = Array.from(racerRelays.keys()).map((name) => ({
           name,
           mock: relayConnections.get(racerRelays.get(name)!)?.mock || false,
         }));
-        logger.info(
-          {
-            disconnectedRacer: racerName,
-            remainingRacers: availableRacers,
-            relayCount: relayConnections.size,
-          },
-          'Racer disconnected, broadcasting updated list to webapps'
+        logger.warn(
+          `👋 Racer "${racerName}" disconnected | ` +
+          `Remaining: ${availableRacers.length > 0 ? availableRacers.map(r => r.name).join(', ') : 'None'}`
         );
         io.to('webapp').emit('racers:list', availableRacers);
         io.to('webapp').emit('relay:status', {

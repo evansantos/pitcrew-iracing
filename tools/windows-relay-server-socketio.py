@@ -442,6 +442,18 @@ def mock_telemetry_loop():
 
             # Generate and send mock telemetry
             telemetry = generate_mock_telemetry()
+
+            # Log human-friendly telemetry info
+            player = telemetry.get('player', {})
+            session = telemetry.get('session', {})
+            logger.info(
+                f"📊 [{RACER_NAME}] Lap {player.get('lap', 0)} | "
+                f"Speed: {round(player.get('speed', 0))} km/h | "
+                f"Gear: {player.get('gear', 0)} | "
+                f"Fuel: {player.get('fuelLevel', 0):.1f}L | "
+                f"Position: {session.get('position', 'N/A')}/{session.get('totalDrivers', 'N/A')}"
+            )
+
             sio.emit('relay:telemetry', {
                 'racerName': RACER_NAME,
                 'telemetry': telemetry
@@ -498,6 +510,17 @@ def telemetry_loop():
             if ir.freeze_var_buffer_latest():
                 # Get all telemetry data
                 telemetry = transform_telemetry(ir)
+
+                # Log human-friendly telemetry info
+                player = telemetry.get('player', {})
+                session = telemetry.get('session', {})
+                logger.info(
+                    f"📊 [{RACER_NAME}] Lap {player.get('lap', 0)} | "
+                    f"Speed: {round(player.get('speed', 0))} km/h | "
+                    f"Gear: {player.get('gear', 0)} | "
+                    f"Fuel: {player.get('fuelLevel', 0):.1f}L | "
+                    f"Position: {session.get('position', 'N/A')}/{session.get('totalDrivers', 'N/A')}"
+                )
 
                 # Send to API server with racer info
                 sio.emit('relay:telemetry', {
