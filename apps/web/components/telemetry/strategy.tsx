@@ -12,6 +12,18 @@ export function Strategy() {
   // Flag to indicate if we're using backend strategy or local calculations
   const useBackendStrategy = backendStrategy !== null;
 
+  // Helper function to format time in human-readable format
+  const formatTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   let data;
   try {
     data = normalizeTelemetryData(rawData);
@@ -68,7 +80,7 @@ export function Strategy() {
               <div>
                 <div className="text-xs text-muted-foreground">Time Remaining</div>
                 <div className="text-lg font-semibold">
-                  {Math.floor(data.session.timeRemaining / 60)}:{(data.session.timeRemaining % 60).toFixed(0).padStart(2, '0')}
+                  {formatTime(data.session.timeRemaining)}
                 </div>
               </div>
               <div>
