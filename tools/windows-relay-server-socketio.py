@@ -132,6 +132,13 @@ Examples:
         help='Use mock/test mode - generate fake telemetry data for testing (useful on non-Windows systems)'
     )
 
+    parser.add_argument(
+        '--racer',
+        type=str,
+        default=os.getenv('RACER_NAME', 'Default Racer'),
+        help='Racer/driver name for multi-user setups (default: "Default Racer" or $RACER_NAME)'
+    )
+
     return parser.parse_args()
 
 
@@ -142,6 +149,7 @@ API_PORT = args.port
 API_SECURE = args.secure
 TELEMETRY_RATE = args.rate
 MOCK_MODE = args.mock
+RACER_NAME = args.racer
 UPDATE_INTERVAL = 1.0 / TELEMETRY_RATE  # Calculate interval
 
 # Setup logging
@@ -255,8 +263,13 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
 @sio.event
 def connect():
     logger.info("✅ Connected to API server")
-    # Identify as relay
-    sio.emit('identify', {'type': 'relay', 'version': '3.0'})
+    # Identify as relay with racer name
+    sio.emit('identify', {
+        'type': 'relay',
+        'version': '3.0',
+        'racerName': RACER_NAME,
+        'mock': MOCK_MODE
+    })
 
 
 @sio.event
@@ -398,10 +411,13 @@ def mock_telemetry_loop():
 
             # Generate and send mock telemetry
             telemetry = generate_mock_telemetry()
-            sio.emit('relay:telemetry', telemetry)
+            sio.emit('relay:telemetry', {
+                'racerName': RACER_NAME,
+                'telemetry': telemetry
+            })
 
             # Send session state
-            sio.emit('relay:session', {'state': 'connected', 'mock': True})
+            sio.emit('relay:session', {'state': 'connected', 'mock': True, 'racerName': RACER_NAME})
 
             # Run at configured rate
             time.sleep(UPDATE_INTERVAL)
@@ -452,8 +468,11 @@ def telemetry_loop():
                 # Get all telemetry data
                 telemetry = transform_telemetry(ir)
 
-                # Send to API server
-                sio.emit('relay:telemetry', telemetry)
+                # Send to API server with racer info
+                sio.emit('relay:telemetry', {
+                    'racerName': RACER_NAME,
+                    'telemetry': telemetry
+                })
 
             # Run at configured rate
             time.sleep(UPDATE_INTERVAL)
@@ -481,6 +500,7 @@ def main():
     print("")
     print("=" * 50)
     print("[Relay] Configuration:")
+    print(f"[Relay]   Racer: {RACER_NAME}")
     print(f"[Relay]   Local IP: {local_ip}")
     print(f"[Relay]   API Server: {api_url}")
     print(f"[Relay]   Secure: {'Yes (HTTPS/WSS)' if API_SECURE else 'No (HTTP/WS)'}")
