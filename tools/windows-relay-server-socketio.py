@@ -126,6 +126,12 @@ Examples:
         help='Telemetry update rate in Hz (default: 60 or $TELEMETRY_RATE)'
     )
 
+    parser.add_argument(
+        '--mock',
+        action='store_true',
+        help='Use mock/test mode - generate fake telemetry data for testing (useful on non-Windows systems)'
+    )
+
     return parser.parse_args()
 
 
@@ -135,6 +141,7 @@ API_HOST = args.host
 API_PORT = args.port
 API_SECURE = args.secure
 TELEMETRY_RATE = args.rate
+MOCK_MODE = args.mock
 UPDATE_INTERVAL = 1.0 / TELEMETRY_RATE  # Calculate interval
 
 # Setup logging
@@ -267,6 +274,146 @@ def on_identify_ack(data):
     logger.info(f"✅ Relay identified: {data.get('message', 'OK')}")
 
 
+def generate_mock_telemetry() -> Dict[str, Any]:
+    """Generate realistic mock telemetry data for testing"""
+    import random
+    import math
+
+    # Simulate a race lap progression
+    current_time = time.time()
+    lap_time = 90.0  # 90 second lap
+    lap_progress = (current_time % lap_time) / lap_time
+
+    # Simulate speed varying through corners (80-250 km/h)
+    speed_variation = math.sin(lap_progress * math.pi * 4) * 0.3 + 0.7
+    speed = 120 + (130 * speed_variation) + random.uniform(-5, 5)
+
+    # Simulate RPM based on speed
+    rpm = int(2000 + (speed * 40) + random.uniform(-100, 100))
+
+    # Simulate gear changes
+    if speed < 80:
+        gear = 2
+    elif speed < 120:
+        gear = 3
+    elif speed < 160:
+        gear = 4
+    elif speed < 200:
+        gear = 5
+    else:
+        gear = 6
+
+    # Simulate throttle and brake (inversely correlated)
+    throttle = max(0, min(1, speed_variation + random.uniform(-0.1, 0.1)))
+    brake = max(0, min(1, (1 - speed_variation - 0.5) * 2 + random.uniform(-0.1, 0.1)))
+
+    # Simulate fuel consumption
+    lap_num = int(current_time / lap_time) % 50
+    fuel_level = 50.0 - (lap_num * 1.2)
+
+    # Simulate tire temps increasing with laps
+    tire_temp_base = 70 + (lap_num * 2)
+
+    return {
+        'timestamp': int(datetime.now().timestamp() * 1000),
+        'sessionTime': current_time % 3600,
+
+        'player': {
+            'speed': round(speed, 1),
+            'rpm': rpm,
+            'gear': gear,
+            'throttle': round(throttle, 3),
+            'brake': round(brake, 3),
+            'lap': lap_num + 1,
+            'lapDistPct': round(lap_progress, 4),
+            'currentLapTime': round((current_time % lap_time), 3),
+            'lastLapTime': round(lap_time + random.uniform(-2, 2), 3),
+            'bestLapTime': round(lap_time - 3.5, 3),
+            'position': 5,
+            'classPosition': 3,
+            'carName': 'Test Car GT3',
+            'driverName': 'Mock Driver',
+        },
+
+        'fuel': {
+            'level': round(max(0, fuel_level), 2),
+            'levelPct': round(max(0, fuel_level / 50 * 100), 1),
+            'usePerHour': 18.5,
+            'lapsRemaining': int(max(0, fuel_level / 1.2)),
+        },
+
+        'tires': {
+            'lf': {
+                'avgTemp': round(tire_temp_base + random.uniform(-2, 2), 1),
+                'avgWear': round(0.1 + (lap_num * 0.02), 3),
+                'pressure': round(26.5 + random.uniform(-0.2, 0.2), 1),
+            },
+            'rf': {
+                'avgTemp': round(tire_temp_base + random.uniform(-2, 2), 1),
+                'avgWear': round(0.1 + (lap_num * 0.02), 3),
+                'pressure': round(26.5 + random.uniform(-0.2, 0.2), 1),
+            },
+            'lr': {
+                'avgTemp': round(tire_temp_base - 5 + random.uniform(-2, 2), 1),
+                'avgWear': round(0.1 + (lap_num * 0.015), 3),
+                'pressure': round(26.0 + random.uniform(-0.2, 0.2), 1),
+            },
+            'rr': {
+                'avgTemp': round(tire_temp_base - 5 + random.uniform(-2, 2), 1),
+                'avgWear': round(0.1 + (lap_num * 0.015), 3),
+                'pressure': round(26.0 + random.uniform(-0.2, 0.2), 1),
+            },
+        },
+
+        'track': {
+            'name': 'Test Track (Mock)',
+            'temperature': round(25 + random.uniform(-1, 1), 1),
+            'airTemp': round(22 + random.uniform(-1, 1), 1),
+            'windSpeed': round(5 + random.uniform(-2, 2), 1),
+            'windDirection': round(random.uniform(0, 360), 0),
+            'humidity': round(45 + random.uniform(-5, 5), 1),
+        },
+
+        'session': {
+            'type': 'Race',
+            'state': 4,  # Racing
+            'flags': 0x00000001,  # Green flag
+            'timeRemaining': 3600 - (current_time % 3600),
+            'lapsRemaining': 50 - lap_num,
+        },
+    }
+
+
+def mock_telemetry_loop():
+    """Mock telemetry loop for testing without iRacing"""
+    logger.info("🧪 Mock mode enabled - generating test telemetry data")
+    logger.info("Waiting for API server connection...")
+
+    while True:
+        try:
+            # Check if Socket.IO is connected
+            if not sio.connected:
+                time.sleep(1)
+                continue
+
+            # Generate and send mock telemetry
+            telemetry = generate_mock_telemetry()
+            sio.emit('relay:telemetry', telemetry)
+
+            # Send session state
+            sio.emit('relay:session', {'state': 'connected', 'mock': True})
+
+            # Run at configured rate
+            time.sleep(UPDATE_INTERVAL)
+
+        except KeyboardInterrupt:
+            logger.info("Shutting down...")
+            break
+        except Exception as e:
+            logger.error(f"Mock telemetry loop error: {e}")
+            time.sleep(1)
+
+
 def telemetry_loop():
     """Main telemetry processing loop"""
     global ir, is_connected_to_iracing
@@ -338,6 +485,7 @@ def main():
     print(f"[Relay]   API Server: {api_url}")
     print(f"[Relay]   Secure: {'Yes (HTTPS/WSS)' if API_SECURE else 'No (HTTP/WS)'}")
     print(f"[Relay]   Telemetry Rate: {TELEMETRY_RATE} Hz")
+    print(f"[Relay]   Mode: {'🧪 MOCK (Test Data)' if MOCK_MODE else '🏁 LIVE (iRacing)'}")
     print("=" * 50)
     print("")
 
@@ -354,7 +502,10 @@ def main():
         sio.connect(api_url, transports=['websocket', 'polling'])
 
         # Start telemetry loop in main thread
-        telemetry_loop()
+        if MOCK_MODE:
+            mock_telemetry_loop()
+        else:
+            telemetry_loop()
 
     except KeyboardInterrupt:
         logger.info("Shutdown requested")
