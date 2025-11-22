@@ -1,6 +1,5 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
@@ -87,8 +86,6 @@ async function start() {
     origin: config.cors.origin,
     credentials: true,
   });
-
-  await fastify.register(websocket);
 
   // Health check endpoint
   fastify.get('/health', async () => {
