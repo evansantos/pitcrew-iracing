@@ -224,74 +224,100 @@ def get_local_ip() -> str:
         return 'localhost'
 
 
+def safe_get(ir_obj, key, default=None):
+    """Safely get a value from IRSDK object (adds .get() support)"""
+    try:
+        return ir_obj[key]
+    except (KeyError, TypeError):
+        return default
+
+
 def transform_telemetry(ir_data) -> Dict[str, Any]:
     """Transform iRacing SDK data to our application format"""
+    # Handle nested DriverInfo
+    driver_info = safe_get(ir_data, 'DriverInfo', {})
+    driver_name = driver_info.get('DriverUserName', 'Unknown') if isinstance(driver_info, dict) else 'Unknown'
+
+    # Handle nested WeekendInfo
+    weekend_info = safe_get(ir_data, 'WeekendInfo', {})
+    track_name = weekend_info.get('TrackDisplayName', 'Unknown Track') if isinstance(weekend_info, dict) else 'Unknown Track'
+
+    # Handle nested SessionInfo
+    session_info = safe_get(ir_data, 'SessionInfo', {})
+    if isinstance(session_info, dict):
+        sessions = session_info.get('Sessions', [{}])
+        session_type = sessions[0].get('SessionType', 'Unknown') if sessions else 'Unknown'
+    else:
+        session_type = 'Unknown'
+
+    fuel_level_pct = safe_get(ir_data, 'FuelLevelPct', 0)
+
     return {
         'timestamp': int(datetime.now().timestamp() * 1000),
-        'sessionTime': ir_data.get('SessionTime', 0),
+        'sessionTime': safe_get(ir_data, 'SessionTime', 0),
 
         'player': {
-            'speed': ir_data.get('Speed', 0) * 3.6,  # m/s to km/h
-            'rpm': ir_data.get('RPM', 0),
-            'gear': ir_data.get('Gear', 0),
-            'throttle': ir_data.get('Throttle', 0),
-            'brake': ir_data.get('Brake', 0),
-            'lap': ir_data.get('Lap', 0),
-            'lapDistPct': ir_data.get('LapDistPct', 0),
-            'currentLapTime': ir_data.get('LapCurrentLapTime', 0),
-            'lastLapTime': ir_data.get('LapLastLapTime', 0),
-            'bestLapTime': ir_data.get('LapBestLapTime', 0),
-            'position': ir_data.get('Position', 0),
-            'classPosition': ir_data.get('ClassPosition', 0),
-            'carName': ir_data.get('PlayerCarClassShortName', 'Unknown'),
-            'driverName': ir_data.get('DriverInfo', {}).get('DriverUserName', 'Unknown'),
+            'speed': safe_get(ir_data, 'Speed', 0) * 3.6,  # m/s to km/h
+            'rpm': safe_get(ir_data, 'RPM', 0),
+            'gear': safe_get(ir_data, 'Gear', 0),
+            'throttle': safe_get(ir_data, 'Throttle', 0),
+            'brake': safe_get(ir_data, 'Brake', 0),
+            'lap': safe_get(ir_data, 'Lap', 0),
+            'lapDistPct': safe_get(ir_data, 'LapDistPct', 0),
+            'currentLapTime': safe_get(ir_data, 'LapCurrentLapTime', 0),
+            'lastLapTime': safe_get(ir_data, 'LapLastLapTime', 0),
+            'bestLapTime': safe_get(ir_data, 'LapBestLapTime', 0),
+            'position': safe_get(ir_data, 'Position', 0),
+            'classPosition': safe_get(ir_data, 'ClassPosition', 0),
+            'carName': safe_get(ir_data, 'PlayerCarClassShortName', 'Unknown'),
+            'driverName': driver_name,
         },
 
         'fuel': {
-            'level': ir_data.get('FuelLevel', 0),
-            'levelPct': ir_data.get('FuelLevelPct', 0) * 100 if ir_data.get('FuelLevelPct') else 0,
-            'usePerHour': ir_data.get('FuelUsePerHour', 0),
-            'lapsRemaining': int((ir_data.get('FuelLevel', 0) or 0) / ((ir_data.get('FuelUsePerHour', 1) or 1) / 60)),
+            'level': safe_get(ir_data, 'FuelLevel', 0),
+            'levelPct': fuel_level_pct * 100 if fuel_level_pct else 0,
+            'usePerHour': safe_get(ir_data, 'FuelUsePerHour', 0),
+            'lapsRemaining': int((safe_get(ir_data, 'FuelLevel', 0) or 0) / ((safe_get(ir_data, 'FuelUsePerHour', 1) or 1) / 60)),
         },
 
         'tires': {
             'lf': {
-                'avgTemp': ir_data.get('LFtempCM', 0),
-                'avgWear': ir_data.get('LFwearM', 0),
-                'pressure': ir_data.get('LFpressure', 0),
+                'avgTemp': safe_get(ir_data, 'LFtempCM', 0),
+                'avgWear': safe_get(ir_data, 'LFwearM', 0),
+                'pressure': safe_get(ir_data, 'LFpressure', 0),
             },
             'rf': {
-                'avgTemp': ir_data.get('RFtempCM', 0),
-                'avgWear': ir_data.get('RFwearM', 0),
-                'pressure': ir_data.get('RFpressure', 0),
+                'avgTemp': safe_get(ir_data, 'RFtempCM', 0),
+                'avgWear': safe_get(ir_data, 'RFwearM', 0),
+                'pressure': safe_get(ir_data, 'RFpressure', 0),
             },
             'lr': {
-                'avgTemp': ir_data.get('LRtempCM', 0),
-                'avgWear': ir_data.get('LRwearM', 0),
-                'pressure': ir_data.get('LRpressure', 0),
+                'avgTemp': safe_get(ir_data, 'LRtempCM', 0),
+                'avgWear': safe_get(ir_data, 'LRwearM', 0),
+                'pressure': safe_get(ir_data, 'LRpressure', 0),
             },
             'rr': {
-                'avgTemp': ir_data.get('RRtempCM', 0),
-                'avgWear': ir_data.get('RRwearM', 0),
-                'pressure': ir_data.get('RRpressure', 0),
+                'avgTemp': safe_get(ir_data, 'RRtempCM', 0),
+                'avgWear': safe_get(ir_data, 'RRwearM', 0),
+                'pressure': safe_get(ir_data, 'RRpressure', 0),
             },
         },
 
         'track': {
-            'name': ir_data.get('WeekendInfo', {}).get('TrackDisplayName', 'Unknown Track'),
-            'temperature': ir_data.get('TrackTemp', 20),
-            'airTemp': ir_data.get('AirTemp', 20),
-            'windSpeed': ir_data.get('WindVel', 0),
-            'windDirection': ir_data.get('WindDir', 0),
-            'humidity': ir_data.get('RelativeHumidity', 0.5) * 100,
+            'name': track_name,
+            'temperature': safe_get(ir_data, 'TrackTemp', 20),
+            'airTemp': safe_get(ir_data, 'AirTemp', 20),
+            'windSpeed': safe_get(ir_data, 'WindVel', 0),
+            'windDirection': safe_get(ir_data, 'WindDir', 0),
+            'humidity': safe_get(ir_data, 'RelativeHumidity', 0.5) * 100,
         },
 
         'session': {
-            'type': ir_data.get('SessionInfo', {}).get('Sessions', [{}])[0].get('SessionType', 'Unknown'),
-            'state': ir_data.get('SessionState', 0),
-            'flags': ir_data.get('SessionFlags', 0),
-            'timeRemaining': ir_data.get('SessionTimeRemain', 0),
-            'lapsRemaining': ir_data.get('SessionLapsRemain', 0),
+            'type': session_type,
+            'state': safe_get(ir_data, 'SessionState', 0),
+            'flags': safe_get(ir_data, 'SessionFlags', 0),
+            'timeRemaining': safe_get(ir_data, 'SessionTimeRemain', 0),
+            'lapsRemaining': safe_get(ir_data, 'SessionLapsRemain', 0),
         },
     }
 
@@ -523,51 +549,45 @@ def telemetry_loop():
                 is_connected_to_iracing = True
                 sio.emit('relay:session', {'state': 'connected', 'racerName': RACER_NAME})
 
-            # Try to freeze latest data (returns True if data available)
-            # Use freeze_var_buffer() instead of freeze_var_buffer_latest() to always get data
-            # even if it hasn't updated since last read - this prevents gaps in telemetry
+            # Try to get telemetry data - freeze_var_buffer_latest() may return False
+            # if no new data, but we still want to send data if we're in an active session
             try:
+                # Always call freeze to get latest buffer (ignore return value)
                 ir.freeze_var_buffer_latest()
 
-                # Check if we have valid session data
+                # Try to access a session field to verify we have valid data
+                # This will raise an exception if not in a session
                 session_num = ir['SessionNum']
-                is_on_track = session_num >= 0
 
-                if is_on_track:
-                    # Session is active
-                    if not is_in_active_session:
-                        logger.info("🏁 Active session detected - telemetry data flowing!")
-                        is_in_active_session = True
+                # If we got here, we have valid session data
+                if not is_in_active_session:
+                    logger.info("🏁 Active session detected - telemetry data flowing!")
+                    is_in_active_session = True
 
-                    # Get all telemetry data
-                    telemetry = transform_telemetry(ir)
+                # Get all telemetry data
+                telemetry = transform_telemetry(ir)
 
-                    # Log human-friendly telemetry info
-                    player = telemetry.get('player', {})
-                    fuel = telemetry.get('fuel', {})
-                    logger.info(
-                        f"📊 [{RACER_NAME}] Lap {player.get('lap', 0)} | "
-                        f"Speed: {round(player.get('speed', 0))} km/h | "
-                        f"Gear: {player.get('gear', 0)} | "
-                        f"Fuel: {fuel.get('level', 0):.1f}L | "
-                        f"Position: {player.get('position', 'N/A')}"
-                    )
+                # Log human-friendly telemetry info
+                player = telemetry.get('player', {})
+                fuel = telemetry.get('fuel', {})
+                logger.info(
+                    f"📊 [{RACER_NAME}] Lap {player.get('lap', 0)} | "
+                    f"Speed: {round(player.get('speed', 0))} km/h | "
+                    f"Gear: {player.get('gear', 0)} | "
+                    f"Fuel: {fuel.get('level', 0):.1f}L | "
+                    f"Position: {player.get('position', 'N/A')}"
+                )
 
-                    # Send to API server with racer info
-                    sio.emit('relay:telemetry', {
-                        'racerName': RACER_NAME,
-                        'telemetry': telemetry
-                    })
-                else:
-                    # Not in active session (in menu)
-                    if is_in_active_session:
-                        logger.info("⏸️  Session paused or in menu - waiting for active session...")
-                        is_in_active_session = False
+                # Send to API server with racer info
+                sio.emit('relay:telemetry', {
+                    'racerName': RACER_NAME,
+                    'telemetry': telemetry
+                })
 
-            except (KeyError, TypeError):
-                # No valid session data - waiting for active session
+            except (KeyError, TypeError, AttributeError) as e:
+                # No valid session data available (in menu, loading, etc.)
                 if is_in_active_session:
-                    logger.info("⏸️  Session data not available - waiting for active session...")
+                    logger.info("⏸️  Session paused or in menu - waiting for active session...")
                     is_in_active_session = False
 
             # Run at configured rate
