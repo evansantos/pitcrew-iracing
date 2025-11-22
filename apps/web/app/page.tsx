@@ -1,5 +1,6 @@
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { TelemetryStatus } from '@/components/telemetry/telemetry-status';
+import { RelayStatus } from '@/components/telemetry/relay-status';
 import { LiveGauges } from '@/components/telemetry/live-gauges';
 import { LapTimes } from '@/components/telemetry/lap-times';
 import { SessionInfo } from '@/components/telemetry/session-info';
@@ -21,8 +22,11 @@ export default function Home() {
               Real-time telemetry analysis and race strategy
             </p>
           </div>
-          <div className="mt-4">
-            <TelemetryStatus />
+          <div className="mt-4 flex gap-4">
+            <div className="flex-1">
+              <TelemetryStatus />
+            </div>
+            <RelayStatus />
           </div>
         </div>
 

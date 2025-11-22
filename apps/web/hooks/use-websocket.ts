@@ -17,6 +17,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const updateTelemetry = useTelemetryStore((state) => state.updateTelemetry);
   const updateStrategy = useTelemetryStore((state) => state.updateStrategy);
   const setStoreConnected = useTelemetryStore((state) => state.setConnected);
+  const setRelayConnected = useTelemetryStore((state) => state.setRelayConnected);
 
   useEffect(() => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
@@ -46,7 +47,7 @@ export function useWebSocket(): UseWebSocketReturn {
     // Handle relay connection status
     newSocket.on('relay:status', (data: { connected: boolean }) => {
       console.log(`Relay status: ${data.connected ? 'connected' : 'disconnected'}`);
-      // You can update a store or state here to show relay status in UI
+      setRelayConnected(data.connected);
     });
 
     // Handle identification acknowledgment
@@ -73,7 +74,7 @@ export function useWebSocket(): UseWebSocketReturn {
     return () => {
       newSocket.close();
     };
-  }, [updateTelemetry, updateStrategy, setStoreConnected]);
+  }, [updateTelemetry, updateStrategy, setStoreConnected, setRelayConnected]);
 
   return { connected, socket };
 }

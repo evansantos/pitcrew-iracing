@@ -11,12 +11,17 @@ interface TelemetryState {
   // Connection status
   connected: boolean;
   isLive: boolean;
+  relayConnected: boolean; // Track if relay is connected to backend
+
+  // Last update timestamp
+  lastUpdateTime: number | null;
 
   // Actions
   updateTelemetry: (data: ProcessedTelemetry) => void;
   updateStrategy: (strategy: StrategyRecommendation) => void;
   setConnected: (connected: boolean) => void;
   setLive: (isLive: boolean) => void;
+  setRelayConnected: (relayConnected: boolean) => void;
   reset: () => void;
 }
 
@@ -26,12 +31,15 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
   strategy: null,
   connected: false,
   isLive: false,
+  relayConnected: false,
+  lastUpdateTime: null,
 
   // Actions
   updateTelemetry: (data) =>
     set({
       data,
       isLive: true,
+      lastUpdateTime: Date.now(),
     }),
 
   updateStrategy: (strategy) =>
@@ -47,11 +55,15 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
 
   setLive: (isLive) => set({ isLive }),
 
+  setRelayConnected: (relayConnected) => set({ relayConnected }),
+
   reset: () =>
     set({
       data: null,
       strategy: null,
       connected: false,
       isLive: false,
+      relayConnected: false,
+      lastUpdateTime: null,
     }),
 }));

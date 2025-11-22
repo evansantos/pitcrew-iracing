@@ -7,6 +7,7 @@ export function Strategy() {
   const rawData = useTelemetryStore((state) => state.data);
   const backendStrategy = useTelemetryStore((state) => state.strategy);
   const isLive = useTelemetryStore((state) => state.isLive);
+  const relayConnected = useTelemetryStore((state) => state.relayConnected);
 
   // Flag to indicate if we're using backend strategy or local calculations
   const useBackendStrategy = backendStrategy !== null;
@@ -24,12 +25,23 @@ export function Strategy() {
     );
   }
 
-  // Early return if no data or data is invalid
-  if (!isLive || !data || !data.player || !data.fuel || !data.tires || !data.session) {
+  // Early return if no relay connection or no data
+  if (!relayConnected || !isLive || !data || !data.player || !data.fuel || !data.tires || !data.session) {
     return (
       <div className="rounded-lg border bg-card p-6">
         <h3 className="mb-4 text-lg font-semibold">Race Strategy & Pit Decision</h3>
-        <p className="text-sm text-muted-foreground">Waiting for telemetry data...</p>
+        {!relayConnected ? (
+          <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4">
+            <p className="text-sm text-blue-600 dark:text-blue-400">
+              🔌 Waiting for relay connection...
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Start the iRacing relay on your Windows machine to see live race strategy
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Waiting for telemetry data...</p>
+        )}
       </div>
     );
   }
