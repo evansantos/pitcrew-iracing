@@ -274,8 +274,9 @@ def update_fuel_history(current_fuel: float, current_lap: int) -> None:
     if current_lap > last_lap_number:
         fuel_used = last_fuel_level - current_fuel
 
-        # Only record if positive (fuel was actually used)
-        if fuel_used > 0 and fuel_used < 20:  # Sanity check (< 20L per lap)
+        # Stricter validation: Only record reasonable fuel consumption
+        # Typical range: 0.5L to 10L per lap
+        if fuel_used > 0.1 and fuel_used < 15:  # Sanity check
             fuel_history.append(fuel_used)
 
             # Keep only last MAX_FUEL_HISTORY laps
@@ -283,6 +284,9 @@ def update_fuel_history(current_fuel: float, current_lap: int) -> None:
                 fuel_history.pop(0)
 
             logger.info(f"Fuel used last lap: {fuel_used:.2f}L | Median: {calculate_median_fuel_per_lap():.2f}L | History: {len(fuel_history)} laps")
+        else:
+            # Invalid fuel reading - might be refueling, pitting, or sensor error
+            logger.warning(f"Ignoring invalid fuel reading: {fuel_used:.2f}L (last: {last_fuel_level:.2f}L, current: {current_fuel:.2f}L)")
 
     last_fuel_level = current_fuel
     last_lap_number = current_lap
@@ -408,20 +412,26 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
     # Update fuel consumption history
     update_fuel_history(fuel_level, current_lap)
 
-    # Calculate laps remaining using median fuel consumption from last 5-10 laps
-    median_fuel_per_lap = calculate_median_fuel_per_lap()
+    # Calculate fuel per lap - use the same value for both laps remaining and avgPerLap
+    fuel_per_lap = 0
 
-    # Use median if we have history, otherwise fallback to instant calculation
-    if fuel_history:
-        # Use median from historical data
-        laps_remaining = int(fuel_level / median_fuel_per_lap) if median_fuel_per_lap > 0 else 0
+    if fuel_history and len(fuel_history) >= 2:
+        # Use median from historical data (need at least 2 laps)
+        fuel_per_lap = calculate_median_fuel_per_lap()
     elif fuel_use_per_hour > 0 and last_lap_time > 0:
         # Fallback to instant calculation if no history yet
         fuel_per_lap = (fuel_use_per_hour / 3600) * last_lap_time
-        laps_remaining = int(fuel_level / fuel_per_lap) if fuel_per_lap > 0 else 0
     else:
         # Final fallback: assume 2.5L per lap
-        laps_remaining = int(fuel_level / 2.5) if fuel_level > 0 else 0
+        fuel_per_lap = 2.5
+
+    # Validate fuel_per_lap is reasonable (0.1L to 15L per lap)
+    if fuel_per_lap < 0.1 or fuel_per_lap > 15:
+        logger.warning(f"Invalid fuel_per_lap calculated: {fuel_per_lap:.3f}L, using fallback 2.5L")
+        fuel_per_lap = 2.5
+
+    # Calculate laps remaining
+    laps_remaining = int(fuel_level / fuel_per_lap) if fuel_per_lap > 0 and fuel_level > 0 else 0
 
     return {
         'timestamp': int(datetime.now().timestamp() * 1000),
