@@ -201,6 +201,7 @@ async function start() {
           name,
           mock: relayConnections.get(racerRelays.get(name)!)?.mock || false
         }));
+        logger.info({ availableRacers, newRacer: racerName }, 'Broadcasting updated racer list to webapps');
         io.to('webapp').emit('racers:list', availableRacers);
         io.to('webapp').emit('relay:status', { connected: true, racerName });
       } else if (data.type === 'webapp') {
@@ -212,6 +213,11 @@ async function start() {
           name,
           mock: relayConnections.get(racerRelays.get(name)!)?.mock || false
         }));
+        logger.info({
+          webappId: socket.id,
+          availableRacers,
+          relayCount: relayConnections.size
+        }, 'Sending initial racer list to new webapp client');
         socket.emit('racers:list', availableRacers);
         socket.emit('relay:status', { connected: relayConnections.size > 0 });
       }
@@ -219,6 +225,13 @@ async function start() {
 
     // Handle telemetry data from Python relay
     socket.on('relay:telemetry', (data: { racerName: string; telemetry: any }) => {
+      logger.debug({
+        racerName: data.racerName,
+        hasData: !!data.telemetry,
+        speed: data.telemetry?.player?.speed,
+        lap: data.telemetry?.player?.lap,
+      }, 'Received telemetry from relay, broadcasting to webapps');
+
       // Broadcast telemetry to all webapp clients with racer info
       io.to('webapp').emit('telemetry:update', {
         racerName: data.racerName,
@@ -271,6 +284,11 @@ async function start() {
           name,
           mock: relayConnections.get(racerRelays.get(name)!)?.mock || false
         }));
+        logger.info({
+          disconnectedRacer: racerName,
+          remainingRacers: availableRacers,
+          relayCount: relayConnections.size
+        }, 'Racer disconnected, broadcasting updated list to webapps');
         io.to('webapp').emit('racers:list', availableRacers);
         io.to('webapp').emit('relay:status', {
           connected: relayConnections.size > 0,

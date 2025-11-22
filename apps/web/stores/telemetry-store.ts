@@ -51,14 +51,27 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
   // Actions
   updateTelemetry: (racerName, data) =>
     set((state) => {
-      // Only update if this racer is selected or no racer selected yet
-      if (state.selectedRacer === null || state.selectedRacer === racerName) {
+      // Auto-select first racer if none selected
+      if (state.selectedRacer === null) {
+        console.log(`[TelemetryStore] Auto-selecting first racer: ${racerName}`);
+        return {
+          data,
+          isLive: true,
+          lastUpdateTime: Date.now(),
+          selectedRacer: racerName,
+        };
+      }
+
+      // Only update if this racer is currently selected
+      if (state.selectedRacer === racerName) {
         return {
           data,
           isLive: true,
           lastUpdateTime: Date.now(),
         };
       }
+
+      // Different racer's data - ignore it
       return {};
     }),
 
