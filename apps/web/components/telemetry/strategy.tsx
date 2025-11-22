@@ -73,8 +73,8 @@ export function Strategy() {
   }
 
   // Fuel calculations - use backend data if available, otherwise calculate locally
-  const currentLap = data.player.lap || 0;
-  const raceLapsRemaining = data.session.lapsRemaining || 0;
+  const currentLap = Number(data.player.lap) || 0;
+  const raceLapsRemaining = Number(data.session.lapsRemaining) || 0;
 
   let fuelPerLap = 0;
   let fuelLapsRemaining = 0;
@@ -106,11 +106,13 @@ export function Strategy() {
       fuelPerLap = (data.fuel.usePerHour / 3600) * avgLapTime;
     }
 
-    fuelLapsRemaining = fuelPerLap > 0
+    fuelLapsRemaining = fuelPerLap > 0 && Number.isFinite(data.fuel.level)
       ? Math.floor(data.fuel.level / fuelPerLap)
       : 999;
 
-    canFinishOnFuel = fuelLapsRemaining >= raceLapsRemaining;
+    canFinishOnFuel = Number.isFinite(fuelLapsRemaining) && Number.isFinite(raceLapsRemaining)
+      ? fuelLapsRemaining >= raceLapsRemaining
+      : true;
   }
 
   // Tire calculations
@@ -128,7 +130,7 @@ export function Strategy() {
   const needsPit = needsPitForFuel || needsPitForTires;
 
   // Calculate fuel to add (to finish race + 2 lap safety margin)
-  const fuelToAdd = needsPitForFuel
+  const fuelToAdd = needsPitForFuel && Number.isFinite(raceLapsRemaining) && Number.isFinite(fuelPerLap) && Number.isFinite(data.fuel.level)
     ? Math.max(0, ((raceLapsRemaining + 2) * fuelPerLap) - data.fuel.level)
     : 0;
 
@@ -138,19 +140,22 @@ export function Strategy() {
 
   if (needsPitForFuel && needsPitForTires) {
     // Pit for both - use whichever is more urgent
-    const fuelUrgency = fuelLapsRemaining - 2; // 2 lap safety margin
+    const fuelUrgency = Number.isFinite(fuelLapsRemaining) ? fuelLapsRemaining - 2 : 0; // 2 lap safety margin
     const tireUrgency = tireHealth < 20 ? 1 : 3; // Pit ASAP if < 20%, else within 3 laps
-    optimalPitLap = currentLap + Math.min(fuelUrgency, tireUrgency);
+    optimalPitLap = currentLap + Math.max(0, Math.min(fuelUrgency, tireUrgency));
     pitReason = 'fuel + tires';
   } else if (needsPitForFuel) {
-    optimalPitLap = currentLap + (fuelLapsRemaining - 2); // 2 lap safety
+    const urgency = Number.isFinite(fuelLapsRemaining) ? fuelLapsRemaining - 2 : 0;
+    optimalPitLap = currentLap + Math.max(0, urgency); // 2 lap safety
     pitReason = 'fuel';
   } else if (needsPitForTires) {
     optimalPitLap = currentLap + (tireHealth < 20 ? 1 : 3);
     pitReason = 'tires';
   }
 
-  const lapsUntilOptimalPit = optimalPitLap - currentLap;
+  const lapsUntilOptimalPit = Number.isFinite(optimalPitLap) && Number.isFinite(currentLap)
+    ? optimalPitLap - currentLap
+    : 0;
 
   // Calculate dynamic race duration based on current lap + remaining laps
   const totalRaceLaps = currentLap + raceLapsRemaining;
