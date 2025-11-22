@@ -1,0 +1,2 @@
+tools/relay-package/iRacing-Relay-v* filter=lfs diff=lfs merge=lfs -text
+tools/dist/iRacing-Relay-v* filter=lfs diff=lfs merge=lfs -text
