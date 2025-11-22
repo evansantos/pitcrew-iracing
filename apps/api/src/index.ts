@@ -275,9 +275,8 @@ async function start() {
     // Close database connection
     await closeDatabase();
 
-    // Close servers
+    // Close server (this also closes Socket.IO)
     await fastify.close();
-    httpServer.close();
 
     logger.info('Shutdown complete');
     process.exit(0);
