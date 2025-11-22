@@ -205,6 +205,7 @@ sio = socketio.Client(
 # iRacing SDK instance
 ir: Optional[Any] = None
 is_connected_to_iracing = False
+is_in_active_session = False
 
 # Handshake tracking
 handshake_complete = threading.Event()
@@ -490,7 +491,7 @@ def mock_telemetry_loop():
 
 def telemetry_loop():
     """Main telemetry processing loop"""
-    global ir, is_connected_to_iracing
+    global ir, is_connected_to_iracing, is_in_active_session
 
     if not IRSDK_AVAILABLE:
         logger.warning("pyirsdk not available - telemetry loop will not run")
@@ -511,6 +512,7 @@ def telemetry_loop():
                 if is_connected_to_iracing:
                     logger.warning("Disconnected from iRacing")
                     is_connected_to_iracing = False
+                    is_in_active_session = False
                     sio.emit('relay:session', {'state': 'disconnected'})
                 time.sleep(1)
                 continue
@@ -523,6 +525,11 @@ def telemetry_loop():
 
             # Freeze data to prevent changes during read
             if ir.freeze_var_buffer_latest():
+                # Session is now active
+                if not is_in_active_session:
+                    logger.info("🏁 Active session detected - telemetry data flowing!")
+                    is_in_active_session = True
+
                 # Get all telemetry data
                 telemetry = transform_telemetry(ir)
 
@@ -542,6 +549,11 @@ def telemetry_loop():
                     'racerName': RACER_NAME,
                     'telemetry': telemetry
                 })
+            else:
+                # No telemetry data available - waiting for active session
+                if is_in_active_session:
+                    logger.info("⏸️  Session paused or in menu - waiting for active session...")
+                    is_in_active_session = False
 
             # Run at configured rate
             time.sleep(UPDATE_INTERVAL)
