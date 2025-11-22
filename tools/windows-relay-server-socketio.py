@@ -262,6 +262,7 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
             'gear': safe_get(ir_data, 'Gear', 0),
             'throttle': safe_get(ir_data, 'Throttle', 0),
             'brake': safe_get(ir_data, 'Brake', 0),
+            'clutch': safe_get(ir_data, 'Clutch', 0),
             'lap': safe_get(ir_data, 'Lap', 0),
             'lapDistPct': safe_get(ir_data, 'LapDistPct', 0),
             'currentLapTime': safe_get(ir_data, 'LapCurrentLapTime', 0),
@@ -434,6 +435,7 @@ def generate_mock_telemetry() -> Dict[str, Any]:
             'gear': gear,
             'throttle': round(throttle, 3),
             'brake': round(brake, 3),
+            'clutch': 0.0,  # Clutch not used while racing (0 = not pressed, 1 = fully pressed)
             'lap': lap_num + 1,
             'lapDistPct': round(lap_progress, 4),
             'currentLapTime': round((current_time % lap_time), 3),
