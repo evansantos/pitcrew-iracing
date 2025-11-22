@@ -241,28 +241,44 @@ async function start() {
   logger.info(`Socket.IO attached to Fastify server on port ${config.api.port}`);
 
   // Initialize and start enhanced telemetry service
-  const { enhancedTelemetryService } = await import('./modules/telemetry/enhanced-service.js');
+  // In production, data comes from Socket.IO relay, so we don't need the enhanced service
+  // Only start it in development or when explicitly configured
+  let enhancedTelemetryService: any = null;
 
-  // Listen for telemetry data and broadcast to connected clients
-  enhancedTelemetryService.on('telemetry', (data) => {
-    io.to('telemetry').emit('telemetry:update', data);
-  });
+  if (config.env === 'development' || (config.iracing.mode === 'local' && config.iracing.relayHost)) {
+    const { enhancedTelemetryService: service } = await import('./modules/telemetry/enhanced-service.js');
+    enhancedTelemetryService = service;
 
-  // Listen for strategy updates and broadcast to connected clients
-  enhancedTelemetryService.on('strategy', (strategyState) => {
-    io.to('telemetry').emit('strategy:update', strategyState);
-  });
+    // Listen for telemetry data and broadcast to connected clients
+    enhancedTelemetryService.on('telemetry', (data: any) => {
+      io.to('telemetry').emit('telemetry:update', data);
+    });
 
-  // Start telemetry processing
-  await enhancedTelemetryService.connect();
-  logger.info('Enhanced telemetry service started with strategy engine');
+    // Listen for strategy updates and broadcast to connected clients
+    enhancedTelemetryService.on('strategy', (strategyState: any) => {
+      io.to('telemetry').emit('strategy:update', strategyState);
+    });
+
+    // Start telemetry processing
+    try {
+      await enhancedTelemetryService.connect();
+      logger.info('Enhanced telemetry service started with strategy engine');
+    } catch (error) {
+      logger.warn({ error }, 'Failed to start enhanced telemetry service - continuing without it');
+      enhancedTelemetryService = null;
+    }
+  } else {
+    logger.info('Enhanced telemetry service disabled - using Socket.IO relay for telemetry data');
+  }
 
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down gracefully...');
 
-    // Disconnect telemetry service
-    await enhancedTelemetryService.disconnect();
+    // Disconnect telemetry service if it was started
+    if (enhancedTelemetryService) {
+      await enhancedTelemetryService.disconnect();
+    }
 
     // Close Redis connection
     if (redisService.isReady()) {
