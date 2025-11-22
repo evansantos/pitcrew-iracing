@@ -344,6 +344,19 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
 
     fuel_level_pct = safe_get(ir_data, 'FuelLevelPct', 0)
 
+    # Calculate laps remaining properly using lap time and fuel usage
+    fuel_level = safe_get(ir_data, 'FuelLevel', 0)
+    fuel_use_per_hour = safe_get(ir_data, 'FuelUsePerHour', 0)
+    last_lap_time = safe_get(ir_data, 'LapLastLapTime', 0)
+
+    # Calculate fuel per lap: (fuel/hour ÷ 3600) × lap_time_seconds
+    if fuel_use_per_hour > 0 and last_lap_time > 0:
+        fuel_per_lap = (fuel_use_per_hour / 3600) * last_lap_time
+        laps_remaining = int(fuel_level / fuel_per_lap) if fuel_per_lap > 0 else 0
+    else:
+        # Fallback: assume 2.5L per lap if no data available
+        laps_remaining = int(fuel_level / 2.5) if fuel_level > 0 else 0
+
     return {
         'timestamp': int(datetime.now().timestamp() * 1000),
         'sessionTime': safe_get(ir_data, 'SessionTime', 0),
@@ -358,7 +371,7 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
             'lap': safe_get(ir_data, 'Lap', 0),
             'lapDistPct': safe_get(ir_data, 'LapDistPct', 0),
             'currentLapTime': safe_get(ir_data, 'LapCurrentLapTime', 0),
-            'lastLapTime': safe_get(ir_data, 'LapLastLapTime', 0),
+            'lastLapTime': last_lap_time,
             'bestLapTime': safe_get(ir_data, 'LapBestLapTime', 0),
             'position': safe_get(ir_data, 'Position', 0),
             'classPosition': safe_get(ir_data, 'ClassPosition', 0),
@@ -367,10 +380,10 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
         },
 
         'fuel': {
-            'level': safe_get(ir_data, 'FuelLevel', 0),
+            'level': fuel_level,
             'levelPct': fuel_level_pct * 100 if fuel_level_pct else 0,
-            'usePerHour': safe_get(ir_data, 'FuelUsePerHour', 0),
-            'lapsRemaining': int((safe_get(ir_data, 'FuelLevel', 0) or 0) / ((safe_get(ir_data, 'FuelUsePerHour', 1) or 1) / 60)),
+            'usePerHour': fuel_use_per_hour,
+            'lapsRemaining': laps_remaining,
         },
 
         'tires': {
