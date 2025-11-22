@@ -37,8 +37,6 @@ services:
       # API Configuration
       - key: API_PORT
         value: 3000
-      - key: SOCKET_PORT
-        value: 3001
       - key: CORS_ORIGIN
         value: "*"
 
@@ -59,7 +57,7 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: https://pitcrew-iracing.onrender.com
       - key: NEXT_PUBLIC_WS_URL
-        value: wss://pitcrew-iracing.onrender.com:3001
+        value: https://pitcrew-iracing.onrender.com
 
       # Optional: Ollama AI service
       # - key: OLLAMA_BASE_URL

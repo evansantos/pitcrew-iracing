@@ -2,7 +2,6 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
-import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -150,8 +149,8 @@ async function start() {
   }
 
   // Initialize Socket.IO for real-time communication
-  const httpServer = createServer();
-  const io = new Server(httpServer, {
+  // Attach to Fastify's HTTP server instead of creating a separate one
+  const io = new Server(fastify.server, {
     cors: {
       origin: '*', // Allow connections from Python relay on different machines
       credentials: true,
@@ -240,9 +239,9 @@ async function start() {
     });
   });
 
-  httpServer.listen(config.socket.port, () => {
-    logger.info(`WebSocket server running on port ${config.socket.port}`);
-  });
+  // Socket.IO is now attached to Fastify's server (port 3000)
+  // No need for separate httpServer.listen()
+  logger.info(`Socket.IO attached to Fastify server on port ${config.api.port}`);
 
   // Initialize and start enhanced telemetry service
   const { enhancedTelemetryService } = await import('./modules/telemetry/enhanced-service.js');
