@@ -54,11 +54,15 @@ async function start() {
     } else {
       logger.warn('⚠️  AI Race Engineer unavailable - Ollama not running');
       logger.warn('   To enable AI features:');
-      logger.warn('   1. Install Ollama: brew install ollama (or curl https://ollama.ai/install.sh | sh)');
+      logger.warn(
+        '   1. Install Ollama: brew install ollama (or curl https://ollama.ai/install.sh | sh)'
+      );
       logger.warn('   2. Pull a model: ollama pull llama3.1:8b');
       logger.warn('   3. Start Ollama: ollama serve');
       logger.warn('   4. Restart this backend server');
-      logger.warn('   The app will work without AI, but the Race Engineer assistant will be disabled');
+      logger.warn(
+        '   The app will work without AI, but the Race Engineer assistant will be disabled'
+      );
     }
   } catch (error) {
     logger.warn({ error }, '⚠️  Could not connect to Ollama - AI Race Engineer will be disabled');
@@ -171,75 +175,94 @@ async function start() {
     logger.info(`Client connected: ${socket.id}`);
 
     // Handle client identification (relay vs webapp)
-    socket.on('identify', (data: { type: 'relay' | 'webapp'; version?: string; racerName?: string; mock?: boolean }) => {
-      if (data.type === 'relay') {
-        const racerName = data.racerName || 'Default Racer';
-        const relayInfo: RelayInfo = {
-          socketId: socket.id,
-          racerName,
-          version: data.version || 'unknown',
-          mock: data.mock || false,
-          connectedAt: new Date()
-        };
+    socket.on(
+      'identify',
+      (data: {
+        type: 'relay' | 'webapp';
+        version?: string;
+        racerName?: string;
+        mock?: boolean;
+      }) => {
+        if (data.type === 'relay') {
+          const racerName = data.racerName || 'Default Racer';
+          const relayInfo: RelayInfo = {
+            socketId: socket.id,
+            racerName,
+            version: data.version || 'unknown',
+            mock: data.mock || false,
+            connectedAt: new Date(),
+          };
 
-        relayConnections.set(socket.id, relayInfo);
-        racerRelays.set(racerName, socket.id);
-        socket.join('relay');
-        socket.join(`relay:${racerName}`); // Join racer-specific room
+          relayConnections.set(socket.id, relayInfo);
+          racerRelays.set(racerName, socket.id);
+          socket.join('relay');
+          socket.join(`relay:${racerName}`); // Join racer-specific room
 
-        logger.info(`✅ Python relay connected: ${socket.id}, racer: ${racerName}, version: ${data.version || 'unknown'}, mock: ${data.mock}`);
+          logger.info(
+            `✅ Python relay connected: ${socket.id}, racer: ${racerName}, version: ${data.version || 'unknown'}, mock: ${data.mock}`
+          );
 
-        // Acknowledge relay connection
-        socket.emit('identify:ack', {
-          status: 'connected',
-          racerName,
-          message: 'Relay identified and ready to send telemetry'
-        });
+          // Acknowledge relay connection
+          socket.emit('identify:ack', {
+            status: 'connected',
+            racerName,
+            message: 'Relay identified and ready to send telemetry',
+          });
 
-        // Notify all webapp clients about available racers
-        const availableRacers = Array.from(racerRelays.keys()).map(name => ({
-          name,
-          mock: relayConnections.get(racerRelays.get(name)!)?.mock || false
-        }));
-        logger.info({ availableRacers, newRacer: racerName }, 'Broadcasting updated racer list to webapps');
-        io.to('webapp').emit('racers:list', availableRacers);
-        io.to('webapp').emit('relay:status', { connected: true, racerName });
-      } else if (data.type === 'webapp') {
-        socket.join('webapp');
-        logger.info(`Webapp client connected: ${socket.id}`);
+          // Notify all webapp clients about available racers
+          const availableRacers = Array.from(racerRelays.keys()).map((name) => ({
+            name,
+            mock: relayConnections.get(racerRelays.get(name)!)?.mock || false,
+          }));
+          logger.info(
+            { availableRacers, newRacer: racerName },
+            'Broadcasting updated racer list to webapps'
+          );
+          io.to('webapp').emit('racers:list', availableRacers);
+          io.to('webapp').emit('relay:status', { connected: true, racerName });
+        } else if (data.type === 'webapp') {
+          socket.join('webapp');
+          logger.info(`Webapp client connected: ${socket.id}`);
 
-        // Send available racers to new webapp client
-        const availableRacers = Array.from(racerRelays.keys()).map(name => ({
-          name,
-          mock: relayConnections.get(racerRelays.get(name)!)?.mock || false
-        }));
-        logger.info({
-          webappId: socket.id,
-          availableRacers,
-          relayCount: relayConnections.size
-        }, 'Sending initial racer list to new webapp client');
-        socket.emit('racers:list', availableRacers);
-        socket.emit('relay:status', { connected: relayConnections.size > 0 });
+          // Send available racers to new webapp client
+          const availableRacers = Array.from(racerRelays.keys()).map((name) => ({
+            name,
+            mock: relayConnections.get(racerRelays.get(name)!)?.mock || false,
+          }));
+          logger.info(
+            {
+              webappId: socket.id,
+              availableRacers,
+              relayCount: relayConnections.size,
+            },
+            'Sending initial racer list to new webapp client'
+          );
+          socket.emit('racers:list', availableRacers);
+          socket.emit('relay:status', { connected: relayConnections.size > 0 });
+        }
       }
-    });
+    );
 
     // Handle telemetry data from Python relay
     socket.on('relay:telemetry', (data: { racerName: string; telemetry: any }) => {
-      logger.debug({
-        racerName: data.racerName,
-        hasData: !!data.telemetry,
-        speed: data.telemetry?.player?.speed,
-        lap: data.telemetry?.player?.lap,
-      }, 'Received telemetry from relay, broadcasting to webapps');
+      logger.debug(
+        {
+          racerName: data.racerName,
+          hasData: !!data.telemetry,
+          speed: data.telemetry?.player?.speed,
+          lap: data.telemetry?.player?.lap,
+        },
+        'Received telemetry from relay, broadcasting to webapps'
+      );
 
       // Broadcast telemetry to all webapp clients with racer info
       io.to('webapp').emit('telemetry:update', {
         racerName: data.racerName,
-        telemetry: data.telemetry
+        telemetry: data.telemetry,
       });
       io.to('telemetry').emit('telemetry:update', {
         racerName: data.racerName,
-        telemetry: data.telemetry
+        telemetry: data.telemetry,
       });
     });
 
@@ -280,20 +303,23 @@ async function start() {
         logger.warn(`⚠️  Python relay disconnected: ${socket.id}, racer: ${racerName}`);
 
         // Notify all webapp clients about updated racer list
-        const availableRacers = Array.from(racerRelays.keys()).map(name => ({
+        const availableRacers = Array.from(racerRelays.keys()).map((name) => ({
           name,
-          mock: relayConnections.get(racerRelays.get(name)!)?.mock || false
+          mock: relayConnections.get(racerRelays.get(name)!)?.mock || false,
         }));
-        logger.info({
-          disconnectedRacer: racerName,
-          remainingRacers: availableRacers,
-          relayCount: relayConnections.size
-        }, 'Racer disconnected, broadcasting updated list to webapps');
+        logger.info(
+          {
+            disconnectedRacer: racerName,
+            remainingRacers: availableRacers,
+            relayCount: relayConnections.size,
+          },
+          'Racer disconnected, broadcasting updated list to webapps'
+        );
         io.to('webapp').emit('racers:list', availableRacers);
         io.to('webapp').emit('relay:status', {
           connected: relayConnections.size > 0,
           racerName,
-          disconnected: true
+          disconnected: true,
         });
       } else {
         logger.info(`Client disconnected: ${socket.id}`);
@@ -310,8 +336,10 @@ async function start() {
   // ONLY start it in development mode - NEVER in production
   let enhancedTelemetryService: any = null;
 
-  if (config.env === 'development') {
-    const { enhancedTelemetryService: service } = await import('./modules/telemetry/enhanced-service.js');
+  if (config.env === 'production') {
+    const { enhancedTelemetryService: service } = await import(
+      './modules/telemetry/enhanced-service.js'
+    );
     enhancedTelemetryService = service;
 
     // Listen for telemetry data and broadcast to connected clients
