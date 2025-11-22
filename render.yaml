@@ -46,6 +46,12 @@ services:
       # Setting this to 'remote' for documentation purposes
       - key: IRACING_MODE
         value: remote
+      - key: TELEMETRY_RATE
+        value: 60
+
+      # Feature Flags
+      - key: ENABLE_VOICE_ALERTS
+        value: false
 
       # Database (auto-created if using Blueprint)
       - key: DATABASE_URL
