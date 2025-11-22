@@ -513,7 +513,7 @@ def telemetry_loop():
                     logger.warning("Disconnected from iRacing")
                     is_connected_to_iracing = False
                     is_in_active_session = False
-                    sio.emit('relay:session', {'state': 'disconnected'})
+                    sio.emit('relay:session', {'state': 'disconnected', 'racerName': RACER_NAME})
                 time.sleep(1)
                 continue
 
@@ -521,38 +521,53 @@ def telemetry_loop():
             if not is_connected_to_iracing:
                 logger.info("✅ Connected to iRacing!")
                 is_connected_to_iracing = True
-                sio.emit('relay:session', {'state': 'connected'})
+                sio.emit('relay:session', {'state': 'connected', 'racerName': RACER_NAME})
 
-            # Freeze data to prevent changes during read
-            if ir.freeze_var_buffer_latest():
-                # Session is now active
-                if not is_in_active_session:
-                    logger.info("🏁 Active session detected - telemetry data flowing!")
-                    is_in_active_session = True
+            # Try to freeze latest data (returns True if data available)
+            # Use freeze_var_buffer() instead of freeze_var_buffer_latest() to always get data
+            # even if it hasn't updated since last read - this prevents gaps in telemetry
+            try:
+                ir.freeze_var_buffer_latest()
 
-                # Get all telemetry data
-                telemetry = transform_telemetry(ir)
+                # Check if we have valid session data
+                session_num = ir['SessionNum']
+                is_on_track = session_num >= 0
 
-                # Log human-friendly telemetry info
-                player = telemetry.get('player', {})
-                session = telemetry.get('session', {})
-                logger.info(
-                    f"📊 [{RACER_NAME}] Lap {player.get('lap', 0)} | "
-                    f"Speed: {round(player.get('speed', 0))} km/h | "
-                    f"Gear: {player.get('gear', 0)} | "
-                    f"Fuel: {player.get('fuelLevel', 0):.1f}L | "
-                    f"Position: {session.get('position', 'N/A')}/{session.get('totalDrivers', 'N/A')}"
-                )
+                if is_on_track:
+                    # Session is active
+                    if not is_in_active_session:
+                        logger.info("🏁 Active session detected - telemetry data flowing!")
+                        is_in_active_session = True
 
-                # Send to API server with racer info
-                sio.emit('relay:telemetry', {
-                    'racerName': RACER_NAME,
-                    'telemetry': telemetry
-                })
-            else:
-                # No telemetry data available - waiting for active session
+                    # Get all telemetry data
+                    telemetry = transform_telemetry(ir)
+
+                    # Log human-friendly telemetry info
+                    player = telemetry.get('player', {})
+                    fuel = telemetry.get('fuel', {})
+                    logger.info(
+                        f"📊 [{RACER_NAME}] Lap {player.get('lap', 0)} | "
+                        f"Speed: {round(player.get('speed', 0))} km/h | "
+                        f"Gear: {player.get('gear', 0)} | "
+                        f"Fuel: {fuel.get('level', 0):.1f}L | "
+                        f"Position: {player.get('position', 'N/A')}"
+                    )
+
+                    # Send to API server with racer info
+                    sio.emit('relay:telemetry', {
+                        'racerName': RACER_NAME,
+                        'telemetry': telemetry
+                    })
+                else:
+                    # Not in active session (in menu)
+                    if is_in_active_session:
+                        logger.info("⏸️  Session paused or in menu - waiting for active session...")
+                        is_in_active_session = False
+
+            except (KeyError, TypeError):
+                # No valid session data - waiting for active session
                 if is_in_active_session:
-                    logger.info("⏸️  Session paused or in menu - waiting for active session...")
+                    logger.info("⏸️  Session data not available - waiting for active session...")
                     is_in_active_session = False
 
             # Run at configured rate
