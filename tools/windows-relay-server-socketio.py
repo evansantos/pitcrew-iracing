@@ -22,7 +22,7 @@ Options:
   --secure           Use HTTPS/WSS (default: enabled)
   --no-secure        Disable HTTPS/WSS (for local development)
   --racer NAME       Your racer/driver name (prompts if not provided)
-  --rate RATE        Telemetry update rate in Hz (default: 60)
+  --rate RATE        Telemetry update rate in Hz (default: 16)
   --mock             Use mock/test data instead of iRacing
   -h, --help         Show this help message
 
@@ -133,8 +133,8 @@ Examples:
     parser.add_argument(
         '--rate',
         type=int,
-        default=int(os.getenv('TELEMETRY_RATE', '60')),
-        help='Telemetry update rate in Hz (default: 60 or $TELEMETRY_RATE)'
+        default=int(os.getenv('TELEMETRY_RATE', '16')),
+        help='Telemetry update rate in Hz (default: 16 or $TELEMETRY_RATE)'
     )
 
     parser.add_argument(
