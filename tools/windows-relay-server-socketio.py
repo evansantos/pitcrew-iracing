@@ -212,6 +212,12 @@ is_in_active_session = False
 handshake_complete = threading.Event()
 handshake_error = None
 
+# Fuel consumption tracking
+fuel_history = []  # List of fuel used per lap
+last_fuel_level = None
+last_lap_number = 0
+MAX_FUEL_HISTORY = 10  # Track last 10 laps
+
 
 def get_local_ip() -> str:
     """Get local IP address"""
@@ -231,6 +237,55 @@ def safe_get(ir_obj, key, default=None):
         return ir_obj[key]
     except (KeyError, TypeError):
         return default
+
+
+def calculate_median_fuel_per_lap() -> float:
+    """Calculate median fuel consumption from recent laps"""
+    global fuel_history
+
+    if not fuel_history:
+        return 2.5  # Default fallback
+
+    # Sort and get median
+    sorted_fuel = sorted(fuel_history)
+    n = len(sorted_fuel)
+
+    if n % 2 == 0:
+        # Even number of elements - average of middle two
+        median = (sorted_fuel[n // 2 - 1] + sorted_fuel[n // 2]) / 2
+    else:
+        # Odd number of elements - middle element
+        median = sorted_fuel[n // 2]
+
+    return median
+
+
+def update_fuel_history(current_fuel: float, current_lap: int) -> None:
+    """Track fuel consumption per lap"""
+    global fuel_history, last_fuel_level, last_lap_number
+
+    # Skip if this is the first data point or same lap
+    if last_fuel_level is None or current_lap <= last_lap_number:
+        last_fuel_level = current_fuel
+        last_lap_number = current_lap
+        return
+
+    # Calculate fuel used since last lap
+    if current_lap > last_lap_number:
+        fuel_used = last_fuel_level - current_fuel
+
+        # Only record if positive (fuel was actually used)
+        if fuel_used > 0 and fuel_used < 20:  # Sanity check (< 20L per lap)
+            fuel_history.append(fuel_used)
+
+            # Keep only last MAX_FUEL_HISTORY laps
+            if len(fuel_history) > MAX_FUEL_HISTORY:
+                fuel_history.pop(0)
+
+            logger.info(f"Fuel used last lap: {fuel_used:.2f}L | Median: {calculate_median_fuel_per_lap():.2f}L | History: {len(fuel_history)} laps")
+
+    last_fuel_level = current_fuel
+    last_lap_number = current_lap
 
 
 def _get_opponents_data(ir_data) -> list:
@@ -344,17 +399,28 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
 
     fuel_level_pct = safe_get(ir_data, 'FuelLevelPct', 0)
 
-    # Calculate laps remaining properly using lap time and fuel usage
+    # Get fuel and lap data
     fuel_level = safe_get(ir_data, 'FuelLevel', 0)
     fuel_use_per_hour = safe_get(ir_data, 'FuelUsePerHour', 0)
     last_lap_time = safe_get(ir_data, 'LapLastLapTime', 0)
+    current_lap = safe_get(ir_data, 'Lap', 0)
 
-    # Calculate fuel per lap: (fuel/hour ÷ 3600) × lap_time_seconds
-    if fuel_use_per_hour > 0 and last_lap_time > 0:
+    # Update fuel consumption history
+    update_fuel_history(fuel_level, current_lap)
+
+    # Calculate laps remaining using median fuel consumption from last 5-10 laps
+    median_fuel_per_lap = calculate_median_fuel_per_lap()
+
+    # Use median if we have history, otherwise fallback to instant calculation
+    if fuel_history:
+        # Use median from historical data
+        laps_remaining = int(fuel_level / median_fuel_per_lap) if median_fuel_per_lap > 0 else 0
+    elif fuel_use_per_hour > 0 and last_lap_time > 0:
+        # Fallback to instant calculation if no history yet
         fuel_per_lap = (fuel_use_per_hour / 3600) * last_lap_time
         laps_remaining = int(fuel_level / fuel_per_lap) if fuel_per_lap > 0 else 0
     else:
-        # Fallback: assume 2.5L per lap if no data available
+        # Final fallback: assume 2.5L per lap
         laps_remaining = int(fuel_level / 2.5) if fuel_level > 0 else 0
 
     return {
@@ -384,6 +450,7 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
             'levelPct': fuel_level_pct * 100 if fuel_level_pct else 0,
             'usePerHour': fuel_use_per_hour,
             'lapsRemaining': laps_remaining,
+            'avgPerLap': round(median_fuel_per_lap, 2),  # Median fuel consumption per lap
         },
 
         'tires': {
@@ -640,6 +707,7 @@ def generate_mock_telemetry() -> Dict[str, Any]:
             'levelPct': round(max(0, fuel_level / 50 * 100), 1),
             'usePerHour': 18.5,
             'lapsRemaining': int(max(0, fuel_level / 1.2)),
+            'avgPerLap': 1.2,  # Mock average fuel per lap
         },
 
         'tires': {
