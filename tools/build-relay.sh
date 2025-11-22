@@ -24,7 +24,7 @@ pip3 install pyirsdk python-socketio websocket-client pyinstaller
 echo ""
 echo "[3/4] Building executable with PyInstaller..."
 pyinstaller --onefile \
-    --name "iRacing-Relay-v3.0" \
+    --name "iRacing-Relay-v3.1" \
     --console \
     --clean \
     --noconfirm \
@@ -35,8 +35,8 @@ echo "[4/4] Build complete!"
 echo ""
 echo "================================================"
 echo "The executable is located at:"
-echo "  dist/iRacing-Relay-v3.0.exe (Windows)"
-echo "  dist/iRacing-Relay-v3.0 (Mac/Linux)"
+echo "  dist/iRacing-Relay-v3.1.exe (Windows)"
+echo "  dist/iRacing-Relay-v3.1 (Mac/Linux)"
 echo "================================================"
 echo ""
 echo "You can now copy this file to any machine"

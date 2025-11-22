@@ -1,5 +1,11 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { ProcessedTelemetry, StrategyRecommendation } from '@iracing-race-engineer/shared';
+
+interface Racer {
+  name: string;
+  mock: boolean;
+}
 
 interface TelemetryState {
   // Current telemetry data
@@ -16,12 +22,18 @@ interface TelemetryState {
   // Last update timestamp
   lastUpdateTime: number | null;
 
+  // Multi-racer support
+  availableRacers: Racer[];
+  selectedRacer: string | null;
+
   // Actions
-  updateTelemetry: (data: ProcessedTelemetry) => void;
+  updateTelemetry: (racerName: string, data: ProcessedTelemetry) => void;
   updateStrategy: (strategy: StrategyRecommendation) => void;
   setConnected: (connected: boolean) => void;
   setLive: (isLive: boolean) => void;
   setRelayConnected: (relayConnected: boolean) => void;
+  setAvailableRacers: (racers: Racer[]) => void;
+  setSelectedRacer: (racerName: string | null) => void;
   reset: () => void;
 }
 
@@ -33,13 +45,21 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
   isLive: false,
   relayConnected: false,
   lastUpdateTime: null,
+  availableRacers: [],
+  selectedRacer: null,
 
   // Actions
-  updateTelemetry: (data) =>
-    set({
-      data,
-      isLive: true,
-      lastUpdateTime: Date.now(),
+  updateTelemetry: (racerName, data) =>
+    set((state) => {
+      // Only update if this racer is selected or no racer selected yet
+      if (state.selectedRacer === null || state.selectedRacer === racerName) {
+        return {
+          data,
+          isLive: true,
+          lastUpdateTime: Date.now(),
+        };
+      }
+      return {};
     }),
 
   updateStrategy: (strategy) =>
@@ -57,6 +77,10 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
 
   setRelayConnected: (relayConnected) => set({ relayConnected }),
 
+  setAvailableRacers: (racers) => set({ availableRacers: racers }),
+
+  setSelectedRacer: (racerName) => set({ selectedRacer: racerName }),
+
   reset: () =>
     set({
       data: null,
@@ -65,5 +89,7 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
       isLive: false,
       relayConnected: false,
       lastUpdateTime: null,
+      availableRacers: [],
+      selectedRacer: null,
     }),
 }));

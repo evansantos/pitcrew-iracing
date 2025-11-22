@@ -5,13 +5,14 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 echo "================================================"
-echo "iRacing Race Engineer - Relay Server"
+echo "iRacing Race Engineer - Relay Server v3.1"
 echo "================================================"
 echo ""
 echo "Starting relay in MOCK mode (test data)..."
 echo ""
 echo "IMPORTANT:"
-echo "  - This will connect to: pitcrew-iracing.onrender.com"
+echo "  - Connects to: pitcrew-iracing.onrender.com (default)"
+echo "  - You will be prompted for your racer name"
 echo "  - Running in MOCK mode (generates test data)"
 echo "  - For real iRacing data, use Windows version"
 echo "  - Press Ctrl+C to stop"
@@ -22,10 +23,10 @@ echo ""
 cd "$SCRIPT_DIR"
 
 # Make executable if not already
-chmod +x iRacing-Relay-v3.0
+chmod +x iRacing-Relay-v3.1
 
-# Run the relay with mock mode
-./iRacing-Relay-v3.0 --host pitcrew-iracing.onrender.com --port 443 --secure --mock
+# Run the relay with mock mode (defaults to production server)
+./iRacing-Relay-v3.1 --mock
 
 echo ""
 echo "Relay stopped."

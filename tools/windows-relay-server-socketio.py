@@ -1,45 +1,50 @@
 """
 iRacing Telemetry Relay Server for Windows (Socket.IO Client Version)
-VERSION: 3.0 - Connects to API as Socket.IO client
+VERSION: 3.1 - Multi-Racer Support with Production Defaults
 
-This version connects to the central API server via Socket.IO instead of
-running as a standalone WebSocket server.
+This version connects to the central API server via Socket.IO and supports
+multiple racers connecting simultaneously.
 
 Run this on your Windows machine with iRacing installed.
 
 Setup:
 1. Install Python 3.11+ from https://www.python.org/
 2. pip install pyirsdk python-socketio
-3. Run with your API server URL:
-   python windows-relay-server-socketio.py --host your-api.onrender.com --port 443 --secure
+3. Run the relay (connects to production by default):
+   python windows-relay-server-socketio.py
 
 Usage:
   python windows-relay-server-socketio.py [OPTIONS]
 
 Options:
-  --host HOST        API server hostname (default: localhost)
-  --port PORT        API server port (default: 3001)
-  --secure           Use HTTPS/WSS instead of HTTP/WS
+  --host HOST        API server hostname (default: pitcrew-iracing.onrender.com)
+  --port PORT        API server port (default: 443)
+  --secure           Use HTTPS/WSS (default: enabled)
+  --no-secure        Disable HTTPS/WSS (for local development)
+  --racer NAME       Your racer/driver name (prompts if not provided)
   --rate RATE        Telemetry update rate in Hz (default: 60)
+  --mock             Use mock/test data instead of iRacing
   -h, --help         Show this help message
 
 Environment Variables:
   API_HOST          API server hostname
   API_PORT          API server port
-  API_SECURE        Use secure connection (true/false)
+  API_SECURE        Use secure connection (default: true)
+  RACER_NAME        Your racer/driver name
   TELEMETRY_RATE    Update rate in Hz
 
 Examples:
-  # Connect to localhost (development)
+  # Connect to production (default) - will prompt for racer name
   python windows-relay-server-socketio.py
 
-  # Connect to Render.com (production)
-  python windows-relay-server-socketio.py --host your-api.onrender.com --port 443 --secure
+  # Connect with racer name specified
+  python windows-relay-server-socketio.py --racer "John Smith"
+
+  # Connect to localhost for development
+  python windows-relay-server-socketio.py --host localhost --port 3001 --no-secure
 
   # Using environment variables
-  set API_HOST=your-api.onrender.com
-  set API_PORT=443
-  set API_SECURE=true
+  set RACER_NAME=John Smith
   python windows-relay-server-socketio.py
 """
 
@@ -53,8 +58,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 print("=" * 50)
-print("iRacing Relay Server - Version 3.0")
-print("Socket.IO Client Mode")
+print("iRacing Relay Server - Version 3.1")
+print("Multi-Racer Support | Production Ready")
 print("=" * 50)
 print("")
 
@@ -88,35 +93,41 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
-  # Connect to localhost (development)
+  # Connect to production server (default)
   python windows-relay-server-socketio.py
 
-  # Connect to Render.com (production)
-  python windows-relay-server-socketio.py --host your-api.onrender.com --port 443 --secure
+  # Connect to localhost (development)
+  python windows-relay-server-socketio.py --host localhost --port 3001 --no-secure
 
   # Custom rate
-  python windows-relay-server-socketio.py --host api.example.com --rate 30
+  python windows-relay-server-socketio.py --rate 30
         '''
     )
 
     parser.add_argument(
         '--host',
-        default=os.getenv('API_HOST', 'localhost'),
-        help='API server hostname (default: localhost or $API_HOST)'
+        default=os.getenv('API_HOST', 'pitcrew-iracing.onrender.com'),
+        help='API server hostname (default: pitcrew-iracing.onrender.com or $API_HOST)'
     )
 
     parser.add_argument(
         '--port',
         type=int,
-        default=int(os.getenv('API_PORT', '3001')),
-        help='API server port (default: 3001 or $API_PORT)'
+        default=int(os.getenv('API_PORT', '443')),
+        help='API server port (default: 443 or $API_PORT)'
     )
 
     parser.add_argument(
         '--secure',
         action='store_true',
-        default=os.getenv('API_SECURE', '').lower() in ('true', '1', 'yes'),
-        help='Use HTTPS/WSS instead of HTTP/WS'
+        default=os.getenv('API_SECURE', 'true').lower() in ('true', '1', 'yes'),
+        help='Use HTTPS/WSS instead of HTTP/WS (default: True)'
+    )
+
+    parser.add_argument(
+        '--no-secure',
+        action='store_true',
+        help='Disable HTTPS/WSS (use for local development)'
     )
 
     parser.add_argument(
@@ -135,8 +146,8 @@ Examples:
     parser.add_argument(
         '--racer',
         type=str,
-        default=os.getenv('RACER_NAME', 'Default Racer'),
-        help='Racer/driver name for multi-user setups (default: "Default Racer" or $RACER_NAME)'
+        default=os.getenv('RACER_NAME', ''),
+        help='Racer/driver name for multi-user setups (will prompt if not provided)'
     )
 
     return parser.parse_args()
@@ -146,11 +157,31 @@ Examples:
 args = parse_arguments()
 API_HOST = args.host
 API_PORT = args.port
-API_SECURE = args.secure
+API_SECURE = args.secure and not args.no_secure  # --no-secure overrides --secure
 TELEMETRY_RATE = args.rate
 MOCK_MODE = args.mock
 RACER_NAME = args.racer
 UPDATE_INTERVAL = 1.0 / TELEMETRY_RATE  # Calculate interval
+
+# Prompt for racer name if not provided
+if not RACER_NAME:
+    print("")
+    print("=" * 50)
+    print("Multi-Racer Setup")
+    print("=" * 50)
+    print("")
+    print("Enter your racer/driver name to identify your telemetry data.")
+    print("This allows multiple racers to connect simultaneously.")
+    print("")
+    try:
+        RACER_NAME = input("Racer Name: ").strip()
+        if not RACER_NAME:
+            RACER_NAME = "Default Racer"
+            print(f"No name provided, using: {RACER_NAME}")
+    except (KeyboardInterrupt, EOFError):
+        print("\nCancelled by user")
+        sys.exit(0)
+    print("")
 
 # Setup logging
 logging.basicConfig(
@@ -266,7 +297,7 @@ def connect():
     # Identify as relay with racer name
     sio.emit('identify', {
         'type': 'relay',
-        'version': '3.0',
+        'version': '3.1',
         'racerName': RACER_NAME,
         'mock': MOCK_MODE
     })

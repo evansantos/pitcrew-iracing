@@ -18,6 +18,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const updateStrategy = useTelemetryStore((state) => state.updateStrategy);
   const setStoreConnected = useTelemetryStore((state) => state.setConnected);
   const setRelayConnected = useTelemetryStore((state) => state.setRelayConnected);
+  const setAvailableRacers = useTelemetryStore((state) => state.setAvailableRacers);
 
   useEffect(() => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
@@ -55,8 +56,14 @@ export function useWebSocket(): UseWebSocketReturn {
       console.log('Webapp identified:', data);
     });
 
-    newSocket.on('telemetry:update', (telemetryData: ProcessedTelemetry) => {
-      updateTelemetry(telemetryData);
+    // Handle available racers list
+    newSocket.on('racers:list', (racers: Array<{ name: string; mock: boolean }>) => {
+      console.log('Available racers:', racers);
+      setAvailableRacers(racers);
+    });
+
+    newSocket.on('telemetry:update', (data: { racerName: string; telemetry: ProcessedTelemetry }) => {
+      updateTelemetry(data.racerName, data.telemetry);
     });
 
     newSocket.on('strategy:update', (strategyData: StrategyRecommendation) => {
@@ -74,7 +81,7 @@ export function useWebSocket(): UseWebSocketReturn {
     return () => {
       newSocket.close();
     };
-  }, [updateTelemetry, updateStrategy, setStoreConnected, setRelayConnected]);
+  }, [updateTelemetry, updateStrategy, setStoreConnected, setRelayConnected, setAvailableRacers]);
 
   return { connected, socket };
 }
