@@ -16,7 +16,8 @@
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@iracing-race-engineer/shared": ["../../packages/shared/dist"]
     }
   },
   "include": ["src/**/*"],
