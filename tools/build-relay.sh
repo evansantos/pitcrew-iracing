@@ -23,6 +23,12 @@ pip3 install pyirsdk python-socketio websocket-client pyinstaller
 
 echo ""
 echo "[3/4] Building executable with PyInstaller..."
+echo "Default values (hardcoded in executable):"
+echo "  - Host: pitcrew-iracing.onrender.com"
+echo "  - Port: 443"
+echo "  - Secure: Yes (HTTPS/WSS)"
+echo "  - Rate: 16 Hz"
+echo ""
 pyinstaller --onefile \
     --name "iRacing-Relay-v3.1" \
     --console \
