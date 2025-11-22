@@ -213,10 +213,11 @@ handshake_complete = threading.Event()
 handshake_error = None
 
 # Fuel consumption tracking
-fuel_history = []  # List of fuel used per lap
+fuel_history = []  # List of fuel used per lap (last 5 laps of current stint)
 last_fuel_level = None
 last_lap_number = 0
-MAX_FUEL_HISTORY = 10  # Track last 10 laps
+last_on_pit_road = False  # Track pit road status to detect new stints
+MAX_FUEL_HISTORY = 5  # Track last 5 laps
 
 
 def get_local_ip() -> str:
@@ -239,12 +240,17 @@ def safe_get(ir_obj, key, default=None):
         return default
 
 
-def calculate_median_fuel_per_lap() -> float:
-    """Calculate median fuel consumption from recent laps"""
+def calculate_median_fuel_per_lap() -> float | None:
+    """Calculate median fuel consumption from recent laps (current stint only)
+
+    Returns:
+        Median fuel per lap in liters, or None if insufficient data
+    """
     global fuel_history
 
-    if not fuel_history:
-        return 2.5  # Default fallback
+    # Need at least 2 laps to calculate meaningful median
+    if not fuel_history or len(fuel_history) < 2:
+        return None
 
     # Sort and get median
     sorted_fuel = sorted(fuel_history)
@@ -260,12 +266,30 @@ def calculate_median_fuel_per_lap() -> float:
     return median
 
 
-def update_fuel_history(current_fuel: float, current_lap: int) -> None:
-    """Track fuel consumption per lap"""
-    global fuel_history, last_fuel_level, last_lap_number
+def update_fuel_history(current_fuel: float, current_lap: int, on_pit_road: bool) -> None:
+    """Track fuel consumption per lap (resets on new stint)
 
-    # Skip if this is the first data point or same lap
-    if last_fuel_level is None or current_lap <= last_lap_number:
+    Args:
+        current_fuel: Current fuel level in liters
+        current_lap: Current lap number
+        on_pit_road: Whether the car is currently on pit road
+    """
+    global fuel_history, last_fuel_level, last_lap_number, last_on_pit_road
+
+    # Detect pit stop - reset history when leaving pit road (new stint)
+    if last_on_pit_road and not on_pit_road:
+        logger.info("New stint detected (left pit road) - resetting fuel history")
+        fuel_history.clear()
+        last_fuel_level = current_fuel
+        last_lap_number = current_lap
+        last_on_pit_road = on_pit_road
+        return
+
+    # Update pit road status
+    last_on_pit_road = on_pit_road
+
+    # Skip if this is the first data point, same lap, or on pit road
+    if last_fuel_level is None or current_lap <= last_lap_number or on_pit_road:
         last_fuel_level = current_fuel
         last_lap_number = current_lap
         return
@@ -274,18 +298,20 @@ def update_fuel_history(current_fuel: float, current_lap: int) -> None:
     if current_lap > last_lap_number:
         fuel_used = last_fuel_level - current_fuel
 
-        # Stricter validation: Only record reasonable fuel consumption
-        # Typical range: 0.5L to 10L per lap
-        if fuel_used > 0.1 and fuel_used < 15:  # Sanity check
+        # Only record reasonable fuel consumption (0.1L to 15L per lap)
+        # Ignore pit stops, refueling, or sensor errors
+        if 0.1 < fuel_used < 15:
             fuel_history.append(fuel_used)
 
-            # Keep only last MAX_FUEL_HISTORY laps
+            # Keep only last MAX_FUEL_HISTORY laps (rolling window)
             if len(fuel_history) > MAX_FUEL_HISTORY:
-                fuel_history.pop(0)
+                fuel_history.pop(0)  # Drop oldest lap
 
-            logger.info(f"Fuel used last lap: {fuel_used:.2f}L | Median: {calculate_median_fuel_per_lap():.2f}L | History: {len(fuel_history)} laps")
+            median = calculate_median_fuel_per_lap()
+            median_str = f"{median:.2f}L" if median is not None else "N/A"
+            logger.info(f"Fuel used last lap: {fuel_used:.2f}L | Median: {median_str} | History: {len(fuel_history)}/{MAX_FUEL_HISTORY} laps")
         else:
-            # Invalid fuel reading - might be refueling, pitting, or sensor error
+            # Invalid fuel reading - might be refueling or sensor error
             logger.warning(f"Ignoring invalid fuel reading: {fuel_used:.2f}L (last: {last_fuel_level:.2f}L, current: {current_fuel:.2f}L)")
 
     last_fuel_level = current_fuel
@@ -408,30 +434,19 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
     fuel_use_per_hour = safe_get(ir_data, 'FuelUsePerHour', 0)
     last_lap_time = safe_get(ir_data, 'LapLastLapTime', 0)
     current_lap = safe_get(ir_data, 'Lap', 0)
+    on_pit_road = safe_get(ir_data, 'OnPitRoad', False)
 
-    # Update fuel consumption history
-    update_fuel_history(fuel_level, current_lap)
+    # Update fuel consumption history (resets on new stint)
+    update_fuel_history(fuel_level, current_lap, on_pit_road)
 
-    # Calculate fuel per lap - use the same value for both laps remaining and avgPerLap
-    fuel_per_lap = 0
+    # Calculate fuel per lap using ONLY iRacing data (median of last 5 laps)
+    # No fallbacks - if we don't have data, we don't show it
+    fuel_per_lap = calculate_median_fuel_per_lap()  # Returns None if insufficient data
 
-    if fuel_history and len(fuel_history) >= 2:
-        # Use median from historical data (need at least 2 laps)
-        fuel_per_lap = calculate_median_fuel_per_lap()
-    elif fuel_use_per_hour > 0 and last_lap_time > 0:
-        # Fallback to instant calculation if no history yet
-        fuel_per_lap = (fuel_use_per_hour / 3600) * last_lap_time
-    else:
-        # Final fallback: assume 2.5L per lap
-        fuel_per_lap = 2.5
-
-    # Validate fuel_per_lap is reasonable (0.1L to 15L per lap)
-    if fuel_per_lap < 0.1 or fuel_per_lap > 15:
-        logger.warning(f"Invalid fuel_per_lap calculated: {fuel_per_lap:.3f}L, using fallback 2.5L")
-        fuel_per_lap = 2.5
-
-    # Calculate laps remaining
-    laps_remaining = int(fuel_level / fuel_per_lap) if fuel_per_lap > 0 and fuel_level > 0 else 0
+    # Calculate laps remaining (only if we have valid fuel per lap data)
+    laps_remaining = 0
+    if fuel_per_lap is not None and fuel_per_lap > 0 and fuel_level > 0:
+        laps_remaining = int(fuel_level / fuel_per_lap)
 
     return {
         'timestamp': int(datetime.now().timestamp() * 1000),
@@ -460,7 +475,7 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
             'levelPct': fuel_level_pct * 100 if fuel_level_pct else 0,
             'usePerHour': fuel_use_per_hour,
             'lapsRemaining': laps_remaining,
-            'avgPerLap': round(median_fuel_per_lap, 2),  # Median fuel consumption per lap
+            'avgPerLap': round(fuel_per_lap, 2) if fuel_per_lap is not None else 0,  # Median fuel consumption per lap (from last 5 laps)
         },
 
         'tires': {
