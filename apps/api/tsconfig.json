@@ -5,6 +5,7 @@
     "lib": ["ES2022"],
     "moduleResolution": "bundler",
     "outDir": "./dist",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -20,6 +21,6 @@
       "@iracing-race-engineer/shared": ["../../packages/shared/src"]
     }
   },
-  "include": ["src/**/*", "../../packages/shared/src/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
