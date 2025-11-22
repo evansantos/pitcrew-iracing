@@ -14,7 +14,11 @@ services:
       npm install -g pnpm &&
       pnpm install --no-frozen-lockfile --prod=false &&
       pnpm run build --filter=@iracing-race-engineer/api &&
-      pnpm run build --filter=@iracing-race-engineer/web
+      pnpm run build --filter=@iracing-race-engineer/web &&
+      echo "=== Verifying build output ===" &&
+      ls -la apps/api/ &&
+      ls -la apps/api/dist/ &&
+      echo "=== Build verification complete ==="
 
     # Start only the API (it will serve the webapp files)
     startCommand: cd apps/api && node dist/index.js
