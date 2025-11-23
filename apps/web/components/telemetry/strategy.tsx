@@ -166,14 +166,20 @@ export function Strategy() {
 
   if (needsPitForFuel && needsPitForTires) {
     // Pit for both - use whichever is more urgent
-    const fuelUrgency = Number.isFinite(fuelLapsRemaining) ? fuelLapsRemaining - 2 : 0; // 2 lap safety margin
-    const tireUrgency = tireHealth < 20 ? 1 : 3; // Pit ASAP if < 20%, else within 3 laps
-    optimalPitLap = currentLap + Math.max(0, Math.min(fuelUrgency, tireUrgency));
-    pitReason = 'fuel + tires';
+    // Skip calculation if fuel data is invalid (0 or negative)
+    if (fuelLapsRemaining > 0) {
+      const fuelUrgency = fuelLapsRemaining - 2; // 2 lap safety margin
+      const tireUrgency = tireHealth < 20 ? 1 : 3; // Pit ASAP if < 20%, else within 3 laps
+      optimalPitLap = currentLap + Math.max(0, Math.min(fuelUrgency, tireUrgency));
+      pitReason = 'fuel + tires';
+    }
   } else if (needsPitForFuel) {
-    const urgency = Number.isFinite(fuelLapsRemaining) ? fuelLapsRemaining - 2 : 0;
-    optimalPitLap = currentLap + Math.max(0, urgency); // 2 lap safety
-    pitReason = 'fuel';
+    // Skip calculation if fuel data is invalid (0 or negative)
+    if (fuelLapsRemaining > 0) {
+      const urgency = fuelLapsRemaining - 2;
+      optimalPitLap = currentLap + Math.max(0, urgency); // 2 lap safety
+      pitReason = 'fuel';
+    }
   } else if (needsPitForTires) {
     optimalPitLap = currentLap + (tireHealth < 20 ? 1 : 3);
     pitReason = 'tires';
