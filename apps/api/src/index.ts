@@ -12,9 +12,13 @@ import { raceEngineerRoutes } from './modules/race-engineer/routes.js';
 import { redisService } from './services/cache/index.js';
 import { testConnection, closeDatabase } from './db/index.js';
 import { RaceEngineerLLM } from './services/ai/race-engineer-llm.js';
+import { StrategyEngine } from './services/strategy/strategy-engine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Initialize strategy engine
+const strategyEngine = new StrategyEngine();
 
 async function start() {
   // Initialize Redis
@@ -243,13 +247,15 @@ async function start() {
     socket.on('relay:telemetry', (data: { racerName: string; telemetry: any }) => {
       const player = data.telemetry?.player;
       const session = data.telemetry?.session;
+      const fuel = data.telemetry?.fuel;
+      const tires = data.telemetry?.tires;
 
       logger.info(
         `📊 [${data.racerName}] Lap ${player?.lap || 0} | ` +
         `Speed: ${Math.round(player?.speed || 0)} km/h | ` +
         `Gear: ${player?.gear || 0} | ` +
-        `Fuel: ${player?.fuelLevel?.toFixed(1) || 0}L | ` +
-        `Position: ${session?.position || 'N/A'}/${session?.totalDrivers || 'N/A'}`
+        `Fuel: ${fuel?.level?.toFixed(1) || 0}L | ` +
+        `Position: ${player?.position || 'N/A'}`
       );
 
       // Broadcast telemetry to all webapp clients with racer info
@@ -261,6 +267,70 @@ async function start() {
         racerName: data.racerName,
         telemetry: data.telemetry,
       });
+
+      // Calculate and broadcast strategy (simplified for now)
+      try {
+        // Calculate basic strategy from telemetry data
+        const fuelLapsRemaining = fuel?.lapsRemaining || 0;
+        const raceLapsRemaining = session?.lapsRemaining || 0;
+        const currentLap = player?.lap || 0;
+
+        // Calculate tire health (average of all tires)
+        const avgTireHealth = tires ? (
+          ((tires.lf?.avgWear || 0) + (tires.rf?.avgWear || 0) +
+           (tires.lr?.avgWear || 0) + (tires.rr?.avgWear || 0)) / 4
+        ) : 1.0;
+
+        const tireHealthPct = avgTireHealth * 100;
+
+        // Determine if pit is needed
+        const needsFuel = fuelLapsRemaining < raceLapsRemaining;
+        const needsTires = tireHealthPct < 30;
+        const needsPit = needsFuel || needsTires;
+
+        // Calculate optimal pit lap
+        let optimalPitLap = 0;
+        if (needsFuel && needsTires) {
+          const fuelUrgency = Math.max(0, fuelLapsRemaining - 2);
+          const tireUrgency = tireHealthPct < 20 ? 1 : 3;
+          optimalPitLap = currentLap + Math.min(fuelUrgency, tireUrgency);
+        } else if (needsFuel) {
+          optimalPitLap = currentLap + Math.max(0, fuelLapsRemaining - 2);
+        } else if (needsTires) {
+          optimalPitLap = currentLap + (tireHealthPct < 20 ? 1 : 3);
+        }
+
+        const strategy = {
+          fuelStrategy: {
+            currentFuel: fuel?.level || 0,
+            lapsUntilEmpty: fuelLapsRemaining,
+            averageConsumption: fuel?.avgPerLap || 0,
+            canFinish: !needsFuel,
+            refuelRequired: needsFuel,
+          },
+          tireStrategy: {
+            currentWear: avgTireHealth,
+            healthPercentage: tireHealthPct,
+            canFinish: !needsTires,
+            changeRequired: needsTires,
+          },
+          pitWindow: needsPit ? {
+            optimalLap: optimalPitLap,
+            windowStart: Math.max(currentLap + 1, optimalPitLap - 2),
+            windowEnd: Math.min(raceLapsRemaining, optimalPitLap + 2),
+            reason: needsFuel && needsTires ? 'fuel + tires' : needsFuel ? 'fuel' : 'tires',
+          } : null,
+          recommendations: [],
+          lastUpdated: new Date().toISOString(),
+        };
+
+        // Broadcast strategy to webapp clients
+        io.to('webapp').emit('strategy:update', strategy);
+
+        logger.debug(`📈 [${data.racerName}] Strategy calculated - Fuel: ${fuelLapsRemaining} laps, Tires: ${tireHealthPct.toFixed(0)}%`);
+      } catch (error) {
+        logger.error({ error }, 'Failed to calculate strategy');
+      }
     });
 
     // Handle session data from Python relay
