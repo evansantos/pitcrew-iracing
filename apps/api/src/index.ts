@@ -286,6 +286,13 @@ async function start() {
           const fuelLapsRemaining = fuel?.lapsRemaining || 0;
           const raceLapsRemaining = session?.lapsRemaining || 0;
 
+          // Skip strategy calculation if we don't have valid fuel data
+          // This prevents sending bad data (0 laps) that overrides relay calculations
+          if (!fuel?.lapsRemaining || fuel.lapsRemaining <= 0) {
+            logger.debug(`📈 [${data.racerName}] Skipping strategy - no valid fuel data yet`);
+            return;
+          }
+
           // Handle unlimited sessions (practice/qualify)
           const isUnlimitedSession = raceLapsRemaining > 10000;
           const MIN_FUEL_LAPS_THRESHOLD = 10; // Pit if fuel < 10 laps in unlimited sessions
