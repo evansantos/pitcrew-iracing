@@ -104,20 +104,19 @@ export function TireStrategy() {
 
   const tireHealth = avgTireWear * 100;
 
-  // Calculate tire wear rate (% per lap) - prefer backend data
+  // Calculate tire wear rate (% per lap) - use local calculation
   let tireWearRate = 0;
   let debugInfo = '';
   let lapsOnTires = 0;
   let changeRecommended = false;
 
   if (useBackendStrategy && backendStrategy.tireStrategy) {
-    // Use backend tire strategy
-    tireWearRate = backendStrategy.tireStrategy.degradationRate * 100; // Convert to percentage
-    lapsOnTires = backendStrategy.tireStrategy.lapsOnTires;
-    changeRecommended = backendStrategy.tireStrategy.changeRecommended;
-    debugInfo = `Backend: Rate=${tireWearRate.toFixed(3)}%, Laps=${lapsOnTires}, Change=${changeRecommended}`;
-  } else if (lapHistory.length >= 1) {
-    // Fallback to local calculation
+    // Use backend tire change recommendation
+    changeRecommended = backendStrategy.tireStrategy.changeRequired || false;
+  }
+
+  // Always use local calculation for wear rate since backend doesn't provide degradation rate
+  if (lapHistory.length >= 2) {
     const oldestLap = lapHistory[0];
     const currentLap = data.player.lap;
     const lapsElapsed = currentLap - oldestLap.lapNumber;
@@ -127,8 +126,7 @@ export function TireStrategy() {
       const wearDifference = oldestLap.avgTireWear - avgTireWear;
       // Convert to percentage per lap
       tireWearRate = (wearDifference / lapsElapsed) * 100;
-
-      debugInfo = `Local: Laps ${oldestLap.lapNumber}->${currentLap} (${lapsElapsed}), Wear ${oldestLap.avgTireWear.toFixed(3)}->${avgTireWear.toFixed(3)}, Rate ${tireWearRate.toFixed(3)}%`;
+      lapsOnTires = lapsElapsed;
     }
   }
 
@@ -137,20 +135,25 @@ export function TireStrategy() {
     ? Math.floor((tireHealth - 20) / tireWearRate)
     : 999;
 
-  // Calculate lap time degradation
+  // Calculate lap time degradation - need at least 6 laps (3 early + 3 recent)
   let lapTimeDelta = 0;
   let avgRecentLapTime = 0;
   let avgEarlyLapTime = 0;
 
-  if (lapHistory.length >= 5) {
-    // Compare last 3 laps vs first 3 laps
-    const recentLaps = lapHistory.slice(-3);
-    const earlyLaps = lapHistory.slice(0, Math.min(3, lapHistory.length - 3));
+  if (lapHistory.length >= 6) {
+    // Filter out invalid lap times (0 or very low)
+    const validLaps = lapHistory.filter(lap => lap.lapTime > 10);
 
-    avgRecentLapTime = recentLaps.reduce((sum, lap) => sum + lap.lapTime, 0) / recentLaps.length;
-    avgEarlyLapTime = earlyLaps.reduce((sum, lap) => sum + lap.lapTime, 0) / earlyLaps.length;
+    if (validLaps.length >= 6) {
+      // Compare last 3 valid laps vs first 3 valid laps
+      const recentLaps = validLaps.slice(-3);
+      const earlyLaps = validLaps.slice(0, 3);
 
-    lapTimeDelta = avgRecentLapTime - avgEarlyLapTime;
+      avgRecentLapTime = recentLaps.reduce((sum, lap) => sum + lap.lapTime, 0) / recentLaps.length;
+      avgEarlyLapTime = earlyLaps.reduce((sum, lap) => sum + lap.lapTime, 0) / earlyLaps.length;
+
+      lapTimeDelta = avgRecentLapTime - avgEarlyLapTime;
+    }
   }
 
   // Optimal tire change window
@@ -187,7 +190,7 @@ export function TireStrategy() {
 
           <div className="rounded-lg bg-secondary p-4">
             <div className="text-xs text-muted-foreground">Wear Rate</div>
-            {lapHistory.length >= 1 && tireWearRate > 0 ? (
+            {lapHistory.length >= 2 && tireWearRate > 0 ? (
               <>
                 <div className={`mt-1 text-3xl font-bold ${
                   tireWearRate < 2 ? 'text-green-500' :
@@ -197,13 +200,8 @@ export function TireStrategy() {
                   {tireWearRate.toFixed(2)}%
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  per lap ({lapHistory.length} laps tracked)
+                  per lap ({lapsOnTires} laps tracked)
                 </div>
-                {debugInfo && (
-                  <div className="mt-2 text-xs font-mono text-muted-foreground break-all">
-                    {debugInfo}
-                  </div>
-                )}
               </>
             ) : (
               <>
@@ -211,20 +209,17 @@ export function TireStrategy() {
                   --
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {lapHistory.length === 0 ? 'waiting for lap data...' : 'calculating...'}
+                  {lapHistory.length < 2
+                    ? `calculating... (${lapHistory.length}/2 laps)`
+                    : 'calculating...'}
                 </div>
-                {debugInfo && (
-                  <div className="mt-2 text-xs font-mono text-muted-foreground break-all">
-                    DEBUG: {debugInfo}
-                  </div>
-                )}
               </>
             )}
           </div>
         </div>
 
         {/* Lap Time Degradation */}
-        {lapHistory.length >= 5 && (
+        {avgEarlyLapTime > 0 && avgRecentLapTime > 0 && (
           <div className="rounded-lg border border-orange-500/20 bg-orange-500/10 p-4">
             <div className="flex items-start gap-3">
               <span className="text-xl">📊</span>
