@@ -175,6 +175,13 @@ async function start() {
   const relayConnections = new Map<string, RelayInfo>(); // Map of socketId to relay info
   const racerRelays = new Map<string, string>(); // Map of racerName to socketId
 
+  // Track last strategy emission per racer to prevent flickering
+  interface StrategyCache {
+    lastLap: number;
+    lastStrategy: any;
+  }
+  const strategyCache = new Map<string, StrategyCache>(); // Map of racerName to last strategy
+
   io.on('connection', (socket) => {
     logger.info(`Client connected: ${socket.id}`);
 
@@ -268,66 +275,77 @@ async function start() {
         telemetry: data.telemetry,
       });
 
-      // Calculate and broadcast strategy (simplified for now)
+      // Calculate and broadcast strategy (throttled to once per lap to prevent flickering)
       try {
-        // Calculate basic strategy from telemetry data
-        const fuelLapsRemaining = fuel?.lapsRemaining || 0;
-        const raceLapsRemaining = session?.lapsRemaining || 0;
         const currentLap = player?.lap || 0;
+        const cachedStrategy = strategyCache.get(data.racerName);
 
-        // Calculate tire health (average of all tires)
-        const avgTireHealth = tires ? (
-          ((tires.lf?.avgWear || 0) + (tires.rf?.avgWear || 0) +
-           (tires.lr?.avgWear || 0) + (tires.rr?.avgWear || 0)) / 4
-        ) : 1.0;
+        // Only calculate strategy once per lap (when lap changes) or on first telemetry
+        if (!cachedStrategy || cachedStrategy.lastLap !== currentLap) {
+          // Calculate basic strategy from telemetry data
+          const fuelLapsRemaining = fuel?.lapsRemaining || 0;
+          const raceLapsRemaining = session?.lapsRemaining || 0;
 
-        const tireHealthPct = avgTireHealth * 100;
+          // Calculate tire health (average of all tires)
+          const avgTireHealth = tires ? (
+            ((tires.lf?.avgWear || 0) + (tires.rf?.avgWear || 0) +
+             (tires.lr?.avgWear || 0) + (tires.rr?.avgWear || 0)) / 4
+          ) : 1.0;
 
-        // Determine if pit is needed
-        const needsFuel = fuelLapsRemaining < raceLapsRemaining;
-        const needsTires = tireHealthPct < 30;
-        const needsPit = needsFuel || needsTires;
+          const tireHealthPct = avgTireHealth * 100;
 
-        // Calculate optimal pit lap
-        let optimalPitLap = 0;
-        if (needsFuel && needsTires) {
-          const fuelUrgency = Math.max(0, fuelLapsRemaining - 2);
-          const tireUrgency = tireHealthPct < 20 ? 1 : 3;
-          optimalPitLap = currentLap + Math.min(fuelUrgency, tireUrgency);
-        } else if (needsFuel) {
-          optimalPitLap = currentLap + Math.max(0, fuelLapsRemaining - 2);
-        } else if (needsTires) {
-          optimalPitLap = currentLap + (tireHealthPct < 20 ? 1 : 3);
+          // Determine if pit is needed
+          const needsFuel = fuelLapsRemaining < raceLapsRemaining;
+          const needsTires = tireHealthPct < 30;
+          const needsPit = needsFuel || needsTires;
+
+          // Calculate optimal pit lap
+          let optimalPitLap = 0;
+          if (needsFuel && needsTires) {
+            const fuelUrgency = Math.max(0, fuelLapsRemaining - 2);
+            const tireUrgency = tireHealthPct < 20 ? 1 : 3;
+            optimalPitLap = currentLap + Math.min(fuelUrgency, tireUrgency);
+          } else if (needsFuel) {
+            optimalPitLap = currentLap + Math.max(0, fuelLapsRemaining - 2);
+          } else if (needsTires) {
+            optimalPitLap = currentLap + (tireHealthPct < 20 ? 1 : 3);
+          }
+
+          const strategy = {
+            fuelStrategy: {
+              currentFuel: fuel?.level || 0,
+              lapsUntilEmpty: fuelLapsRemaining,
+              averageConsumption: fuel?.avgPerLap || 0,
+              canFinish: !needsFuel,
+              refuelRequired: needsFuel,
+            },
+            tireStrategy: {
+              currentWear: avgTireHealth,
+              healthPercentage: tireHealthPct,
+              canFinish: !needsTires,
+              changeRequired: needsTires,
+            },
+            pitWindow: needsPit ? {
+              optimalLap: optimalPitLap,
+              windowStart: Math.max(currentLap + 1, optimalPitLap - 2),
+              windowEnd: Math.min(raceLapsRemaining, optimalPitLap + 2),
+              reason: needsFuel && needsTires ? 'fuel + tires' : needsFuel ? 'fuel' : 'tires',
+            } : null,
+            recommendations: [],
+            lastUpdated: new Date().toISOString(),
+          };
+
+          // Cache the strategy
+          strategyCache.set(data.racerName, {
+            lastLap: currentLap,
+            lastStrategy: strategy,
+          });
+
+          // Broadcast strategy to webapp clients (only once per lap)
+          io.to('webapp').emit('strategy:update', strategy);
+
+          logger.debug(`📈 [${data.racerName}] Strategy calculated on lap ${currentLap} - Fuel: ${fuelLapsRemaining} laps, Tires: ${tireHealthPct.toFixed(0)}%`);
         }
-
-        const strategy = {
-          fuelStrategy: {
-            currentFuel: fuel?.level || 0,
-            lapsUntilEmpty: fuelLapsRemaining,
-            averageConsumption: fuel?.avgPerLap || 0,
-            canFinish: !needsFuel,
-            refuelRequired: needsFuel,
-          },
-          tireStrategy: {
-            currentWear: avgTireHealth,
-            healthPercentage: tireHealthPct,
-            canFinish: !needsTires,
-            changeRequired: needsTires,
-          },
-          pitWindow: needsPit ? {
-            optimalLap: optimalPitLap,
-            windowStart: Math.max(currentLap + 1, optimalPitLap - 2),
-            windowEnd: Math.min(raceLapsRemaining, optimalPitLap + 2),
-            reason: needsFuel && needsTires ? 'fuel + tires' : needsFuel ? 'fuel' : 'tires',
-          } : null,
-          recommendations: [],
-          lastUpdated: new Date().toISOString(),
-        };
-
-        // Broadcast strategy to webapp clients
-        io.to('webapp').emit('strategy:update', strategy);
-
-        logger.debug(`📈 [${data.racerName}] Strategy calculated - Fuel: ${fuelLapsRemaining} laps, Tires: ${tireHealthPct.toFixed(0)}%`);
       } catch (error) {
         logger.error({ error }, 'Failed to calculate strategy');
       }
@@ -367,6 +385,7 @@ async function start() {
         const racerName = relayInfo.racerName;
         relayConnections.delete(socket.id);
         racerRelays.delete(racerName);
+        strategyCache.delete(racerName); // Clear strategy cache for disconnected racer
 
         // Notify all webapp clients about updated racer list
         const availableRacers = Array.from(racerRelays.keys()).map((name) => ({
