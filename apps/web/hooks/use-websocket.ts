@@ -22,7 +22,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const setLive = useTelemetryStore((state) => state.setLive);
 
   useEffect(() => {
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3000';
     const newSocket = io(wsUrl, {
       transports: ['websocket', 'polling'],
     });
