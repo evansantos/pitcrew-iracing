@@ -146,17 +146,51 @@ export function Strategy() {
   const needsPitForTires = tireHealth < 30;
   const needsPit = needsPitForFuel || needsPitForTires;
 
-  // Calculate fuel to add
+  // Calculate fuel to add and pit stops needed
   let fuelToAdd = 0;
+  let pitStopsNeeded = 0;
+  let lapsPerStop: number[] = [];
+
   if (needsPitForFuel && Number.isFinite(fuelPerLap) && Number.isFinite(data.fuel.level)) {
+    const tankCapacity = data.fuel.tankCapacity || 100; // Use relay's tank capacity or default to 100L
+    const SAFETY_MARGIN = 2; // 2 lap safety margin
+
     if (isUnlimitedSession) {
-      // For unlimited sessions (practice/qualify), suggest filling to reasonable level
-      // Calculate fuel for next 20 laps
-      const targetLaps = 20;
-      fuelToAdd = Math.max(0, (targetLaps * fuelPerLap) - data.fuel.level);
+      // For unlimited sessions (practice/qualify), suggest filling tank
+      fuelToAdd = Math.max(0, tankCapacity - data.fuel.level);
+      pitStopsNeeded = 1;
+      lapsPerStop = [Math.floor((fuelToAdd + data.fuel.level) / fuelPerLap)];
     } else if (Number.isFinite(raceLapsRemaining)) {
-      // For race, calculate to finish + 2 lap safety margin
-      fuelToAdd = Math.max(0, ((raceLapsRemaining + 2) * fuelPerLap) - data.fuel.level);
+      // For race, calculate optimal pit strategy with tank capacity constraint
+      const totalFuelNeeded = (raceLapsRemaining + SAFETY_MARGIN) * fuelPerLap;
+      const currentFuel = data.fuel.level;
+      const fuelDeficit = totalFuelNeeded - currentFuel;
+
+      if (fuelDeficit > 0) {
+        // Calculate maximum fuel we can add per stop
+        const maxFuelPerStop = tankCapacity - currentFuel;
+
+        // Calculate how many pit stops we need
+        pitStopsNeeded = Math.ceil(fuelDeficit / tankCapacity);
+
+        // Calculate laps per stint
+        const lapsWithCurrentFuel = Math.floor(currentFuel / fuelPerLap);
+        const lapsPerTankful = Math.floor(tankCapacity / fuelPerLap);
+
+        lapsPerStop = [lapsWithCurrentFuel];
+        for (let i = 1; i < pitStopsNeeded; i++) {
+          lapsPerStop.push(lapsPerTankful);
+        }
+
+        // Last stint might not need full tank
+        const remainingLaps = raceLapsRemaining - lapsPerStop.reduce((sum, laps) => sum + laps, 0);
+        if (remainingLaps > 0) {
+          lapsPerStop.push(remainingLaps);
+        }
+
+        // First pit stop: add fuel to fill tank
+        fuelToAdd = Math.max(0, Math.min(maxFuelPerStop, totalFuelNeeded - currentFuel));
+      }
     }
   }
 
@@ -526,10 +560,17 @@ export function Strategy() {
                         <div className="text-sm text-muted-foreground">
                           Add <span className="font-mono font-bold text-foreground">{fuelToAdd.toFixed(1)}L</span> fuel
                         </div>
+                        {pitStopsNeeded > 0 && (
+                          <div className="text-xs font-semibold text-amber-500">
+                            {pitStopsNeeded} pit stop{pitStopsNeeded > 1 ? 's' : ''} needed
+                          </div>
+                        )}
                         <div className="text-xs text-muted-foreground">
                           {isUnlimitedSession
-                            ? '(Enough for 20 laps)'
-                            : `(Enough for ${raceLapsRemaining} laps + 2 lap safety margin)`
+                            ? `(${lapsPerStop[0] || 0} laps per tank)`
+                            : pitStopsNeeded > 1
+                              ? `(~${lapsPerStop.filter(l => l > 0).join(', ')} laps per stint)`
+                              : `(Enough for ${raceLapsRemaining} laps + 2 lap safety margin)`
                           }
                         </div>
                       </div>

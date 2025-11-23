@@ -436,6 +436,12 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
     current_lap = safe_get(ir_data, 'Lap', 0)
     on_pit_road = safe_get(ir_data, 'OnPitRoad', False)
 
+    # Calculate tank capacity from fuel level and percentage
+    # FuelLevelPct is a decimal (0.0 to 1.0), so capacity = level / pct
+    tank_capacity = 0
+    if fuel_level_pct > 0 and fuel_level > 0:
+        tank_capacity = round(fuel_level / fuel_level_pct, 2)
+
     # Update fuel consumption history (resets on new stint)
     update_fuel_history(fuel_level, current_lap, on_pit_road)
 
@@ -476,6 +482,7 @@ def transform_telemetry(ir_data) -> Dict[str, Any]:
             'usePerHour': fuel_use_per_hour,
             'lapsRemaining': laps_remaining,
             'avgPerLap': round(fuel_per_lap, 2) if fuel_per_lap is not None else 0,  # Median fuel consumption per lap (from last 5 laps)
+            'tankCapacity': tank_capacity,
         },
 
         'tires': {
@@ -733,6 +740,7 @@ def generate_mock_telemetry() -> Dict[str, Any]:
             'usePerHour': 18.5,
             'lapsRemaining': int(max(0, fuel_level / 1.2)),
             'avgPerLap': 1.2,  # Mock average fuel per lap
+            'tankCapacity': 50.0,  # Mock tank capacity (50L)
         },
 
         'tires': {

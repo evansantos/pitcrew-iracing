@@ -145,6 +145,7 @@ export interface ProcessedTelemetry {
     levelPct: number;
     usePerHour: number;
     lapsRemaining: number;
+    tankCapacity: number;
   };
 
   // Tire data
