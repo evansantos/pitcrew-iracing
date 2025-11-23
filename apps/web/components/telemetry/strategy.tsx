@@ -104,28 +104,32 @@ export function Strategy() {
   const isUnlimitedSession = rawRaceLapsRemaining > 10000;
   const raceLapsRemaining = isUnlimitedSession ? 999 : rawRaceLapsRemaining;
 
-  let fuelPerLap = 0;
-  let fuelLapsRemaining = 0;
-  let canFinishOnFuel = true;
-
   // Minimum fuel laps threshold for unlimited sessions
   const MIN_FUEL_LAPS_THRESHOLD = 10;
 
-  if (useBackendStrategy && backendStrategy.fuelStrategy) {
-    // Use backend fuel strategy
-    fuelLapsRemaining = backendStrategy.fuelStrategy.lapsUntilEmpty;
-    canFinishOnFuel = backendStrategy.fuelStrategy.canFinish;
-    fuelPerLap = backendStrategy.fuelStrategy.averageConsumption;
-  } else {
-    // Use relay's fuel calculation (uses median of last 5-10 laps)
-    fuelLapsRemaining = data.fuel.lapsRemaining || 0;
-    fuelPerLap = data.fuel.avgPerLap || 2.5; // Use relay's median calculation
+  // Use relay's fuel calculation as baseline (uses median of last 5-10 laps)
+  let fuelLapsRemaining = data.fuel.lapsRemaining || 0;
+  let fuelPerLap = data.fuel.avgPerLap || 2.5;
+  let canFinishOnFuel = isUnlimitedSession
+    ? fuelLapsRemaining >= MIN_FUEL_LAPS_THRESHOLD
+    : fuelLapsRemaining >= raceLapsRemaining;
 
-    // For unlimited sessions: consider fuel sufficient if > 10 laps
-    // For races: check if fuel can complete the race
-    canFinishOnFuel = isUnlimitedSession
-      ? fuelLapsRemaining >= MIN_FUEL_LAPS_THRESHOLD
-      : fuelLapsRemaining >= raceLapsRemaining;
+  // Override with backend values only if they're valid (not null/zero)
+  if (useBackendStrategy && backendStrategy.fuelStrategy) {
+    const backendLaps = backendStrategy.fuelStrategy.lapsUntilEmpty;
+    const backendConsumption = backendStrategy.fuelStrategy.averageConsumption;
+
+    // Only use backend values if they're valid numbers
+    if (backendLaps != null && backendLaps > 0) {
+      fuelLapsRemaining = backendLaps;
+    }
+    if (backendConsumption != null && backendConsumption > 0) {
+      fuelPerLap = backendConsumption;
+    }
+    // Only override canFinish if backend value is explicitly set
+    if (backendStrategy.fuelStrategy.canFinish != null) {
+      canFinishOnFuel = backendStrategy.fuelStrategy.canFinish;
+    }
   }
 
   // Tire calculations
