@@ -92,6 +92,7 @@ export class MockTelemetryGenerator {
         levelPct: Math.round((this.state.fuelLevel / 100) * 100),
         usePerHour: 15.5,
         lapsRemaining: Math.floor(this.state.fuelLevel / 2.5),
+        tankCapacity: 100, // Mock tank capacity
       },
 
       tires: {
