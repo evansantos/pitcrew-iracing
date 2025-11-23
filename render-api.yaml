@@ -6,7 +6,7 @@ services:
   - type: web
     name: pitcrew-iracing-api
     runtime: node
-    plan: starter  # $7/month - no sleeping, faster performance
+    plan: free  # Free tier - sleeps after 15 min (use UptimeRobot to prevent)
 
     # Build only shared package and API
     buildCommand: |
