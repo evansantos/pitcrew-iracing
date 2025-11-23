@@ -108,6 +108,9 @@ export function Strategy() {
   let fuelLapsRemaining = 0;
   let canFinishOnFuel = true;
 
+  // Minimum fuel laps threshold for unlimited sessions
+  const MIN_FUEL_LAPS_THRESHOLD = 10;
+
   if (useBackendStrategy && backendStrategy.fuelStrategy) {
     // Use backend fuel strategy
     fuelLapsRemaining = backendStrategy.fuelStrategy.lapsUntilEmpty;
@@ -118,8 +121,11 @@ export function Strategy() {
     fuelLapsRemaining = data.fuel.lapsRemaining || 0;
     fuelPerLap = data.fuel.avgPerLap || 2.5; // Use relay's median calculation
 
-    // In unlimited sessions, always can finish
-    canFinishOnFuel = isUnlimitedSession ? true : fuelLapsRemaining >= raceLapsRemaining;
+    // For unlimited sessions: consider fuel sufficient if > 10 laps
+    // For races: check if fuel can complete the race
+    canFinishOnFuel = isUnlimitedSession
+      ? fuelLapsRemaining >= MIN_FUEL_LAPS_THRESHOLD
+      : fuelLapsRemaining >= raceLapsRemaining;
   }
 
   // Tire calculations

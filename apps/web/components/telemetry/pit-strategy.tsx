@@ -44,7 +44,12 @@ export function PitStrategy() {
   const isUnlimitedSession = rawRaceLapsRemaining > 10000; // Likely practice/qualify
   const raceLapsRemaining = isUnlimitedSession ? 999 : rawRaceLapsRemaining;
 
-  const canFinishOnFuel = isUnlimitedSession ? true : fuelLapsRemaining >= raceLapsRemaining;
+  // For unlimited sessions: consider fuel sufficient if > 10 laps
+  // For races: check if fuel can complete the race
+  const MIN_FUEL_LAPS_THRESHOLD = 10;
+  const canFinishOnFuel = isUnlimitedSession
+    ? fuelLapsRemaining >= MIN_FUEL_LAPS_THRESHOLD
+    : fuelLapsRemaining >= raceLapsRemaining;
 
   // Tire calculations
   const avgTireWear = (
@@ -135,7 +140,11 @@ export function PitStrategy() {
                 <div>
                   <div className="text-xs text-muted-foreground">Fuel Status</div>
                   <div className={`text-lg font-semibold ${canFinishOnFuel ? 'text-green-500' : 'text-red-500'}`}>
-                    {canFinishOnFuel ? `${fuelLapsRemaining} laps` : `Need ${raceLapsRemaining - fuelLapsRemaining} more`}
+                    {canFinishOnFuel
+                      ? `${fuelLapsRemaining} laps`
+                      : isUnlimitedSession
+                        ? `Low: ${fuelLapsRemaining} laps`
+                        : `Need ${raceLapsRemaining - fuelLapsRemaining} more`}
                   </div>
                 </div>
                 <div>

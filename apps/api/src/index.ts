@@ -286,6 +286,10 @@ async function start() {
           const fuelLapsRemaining = fuel?.lapsRemaining || 0;
           const raceLapsRemaining = session?.lapsRemaining || 0;
 
+          // Handle unlimited sessions (practice/qualify)
+          const isUnlimitedSession = raceLapsRemaining > 10000;
+          const MIN_FUEL_LAPS_THRESHOLD = 10; // Pit if fuel < 10 laps in unlimited sessions
+
           // Calculate tire health (average of all tires)
           const avgTireHealth = tires ? (
             ((tires.lf?.avgWear || 0) + (tires.rf?.avgWear || 0) +
@@ -295,7 +299,11 @@ async function start() {
           const tireHealthPct = avgTireHealth * 100;
 
           // Determine if pit is needed
-          const needsFuel = fuelLapsRemaining < raceLapsRemaining;
+          // For unlimited sessions: check if fuel < threshold
+          // For races: check if fuel insufficient to finish
+          const needsFuel = isUnlimitedSession
+            ? fuelLapsRemaining < MIN_FUEL_LAPS_THRESHOLD
+            : fuelLapsRemaining < raceLapsRemaining;
           const needsTires = tireHealthPct < 30;
           const needsPit = needsFuel || needsTires;
 
