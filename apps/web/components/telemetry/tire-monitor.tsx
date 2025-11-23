@@ -100,27 +100,50 @@ export function TireMonitor() {
 
       {/* Legend */}
       <div className="mt-6 space-y-3 border-t pt-4">
-        <div className="text-xs font-semibold text-muted-foreground">Temperature Scale</div>
-        <div className="flex gap-2">
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded-full bg-blue-500" />
-            <span className="text-xs">Cold</span>
+        <div>
+          <div className="text-xs font-semibold text-muted-foreground mb-1">Temperature Scale</div>
+          <div className="flex gap-2 flex-wrap">
+            <div className="flex items-center gap-1">
+              <div className="h-3 w-3 rounded-full bg-blue-500" />
+              <span className="text-xs">Cold</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="h-3 w-3 rounded-full bg-green-500" />
+              <span className="text-xs">Optimal</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="h-3 w-3 rounded-full bg-yellow-500" />
+              <span className="text-xs">Warm</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="h-3 w-3 rounded-full bg-orange-500" />
+              <span className="text-xs">Hot</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="h-3 w-3 rounded-full bg-red-500" />
+              <span className="text-xs">Critical</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded-full bg-green-500" />
-            <span className="text-xs">Optimal</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded-full bg-yellow-500" />
-            <span className="text-xs">Warm</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded-full bg-orange-500" />
-            <span className="text-xs">Hot</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded-full bg-red-500" />
-            <span className="text-xs">Critical</span>
+        </div>
+        <div>
+          <div className="text-xs font-semibold text-muted-foreground mb-1">Wear Scale</div>
+          <div className="flex gap-2 flex-wrap">
+            <div className="flex items-center gap-1">
+              <div className="h-3 w-3 rounded-full bg-green-500" />
+              <span className="text-xs">&gt;90% (New)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="h-3 w-3 rounded-full bg-yellow-500" />
+              <span className="text-xs">70-90% (Good)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="h-3 w-3 rounded-full bg-orange-500" />
+              <span className="text-xs">50-70% (Worn)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="h-3 w-3 rounded-full bg-red-500" />
+              <span className="text-xs">&lt;50% (Critical)</span>
+            </div>
           </div>
         </div>
       </div>
@@ -170,16 +193,47 @@ function TireDisplay({ label, tire, getTempColor, getWearColor }: TireDisplayPro
           </div>
         </div>
 
-        {/* Wear Indicator */}
-        <div className="space-y-1">
+        {/* Wear Indicator - Detailed by section */}
+        <div className="mt-2 space-y-1">
           <div className="text-xs text-muted-foreground">Wear</div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-background">
-            <div
-              className={`h-full ${getWearColor(tire.avgWear)} transition-all`}
-              style={{ width: `${tire.avgWear * 100}%` }}
-            />
+          <div className="flex gap-0.5">
+            <div className="flex-1 text-center">
+              <div className="h-1.5 overflow-hidden rounded-full bg-background">
+                <div
+                  className={`h-full ${getWearColor(tire.wearL)} transition-all`}
+                  style={{ width: `${tire.wearL * 100}%` }}
+                />
+              </div>
+              <div className="mt-0.5 text-xs font-mono text-muted-foreground">
+                {(tire.wearL * 100).toFixed(0)}%
+              </div>
+            </div>
+            <div className="flex-1 text-center">
+              <div className="h-1.5 overflow-hidden rounded-full bg-background">
+                <div
+                  className={`h-full ${getWearColor(tire.wearM)} transition-all`}
+                  style={{ width: `${tire.wearM * 100}%` }}
+                />
+              </div>
+              <div className="mt-0.5 text-xs font-mono font-semibold">
+                {(tire.wearM * 100).toFixed(0)}%
+              </div>
+            </div>
+            <div className="flex-1 text-center">
+              <div className="h-1.5 overflow-hidden rounded-full bg-background">
+                <div
+                  className={`h-full ${getWearColor(tire.wearR)} transition-all`}
+                  style={{ width: `${tire.wearR * 100}%` }}
+                />
+              </div>
+              <div className="mt-0.5 text-xs font-mono text-muted-foreground">
+                {(tire.wearR * 100).toFixed(0)}%
+              </div>
+            </div>
           </div>
-          <div className="text-center text-xs font-mono">{(tire.avgWear * 100).toFixed(0)}%</div>
+          <div className="text-center text-xs font-mono text-muted-foreground">
+            Avg: {(tire.avgWear * 100).toFixed(0)}%
+          </div>
         </div>
       </div>
     </div>
