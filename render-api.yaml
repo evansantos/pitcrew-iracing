@@ -6,7 +6,7 @@ services:
   - type: web
     name: pitcrew-iracing-api
     runtime: node
-    plan: free  # Change to 'starter' for production ($7/month - no sleeping)
+    plan: starter  # $7/month - no sleeping, faster performance
 
     # Build only shared package and API
     buildCommand: |
