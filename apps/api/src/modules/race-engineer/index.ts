@@ -1,15 +1,9 @@
 import { FastifyPluginAsync } from 'fastify';
 import { RaceEngineerLLM } from '../../services/ai/race-engineer-llm.js';
-import type { ProcessedTelemetry, StrategyRecommendation } from '@iracing-race-engineer/shared';
+import type { AdviceRequest } from './types.js';
 
 // Initialize the LLM service
 const raceEngineer = new RaceEngineerLLM();
-
-interface AdviceRequest {
-  question: string;
-  telemetry: ProcessedTelemetry;
-  strategy?: StrategyRecommendation;
-}
 
 export const raceEngineerRoutes: FastifyPluginAsync = async (fastify) => {
   // Get race engineering advice
