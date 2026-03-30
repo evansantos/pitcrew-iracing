@@ -83,7 +83,7 @@ export function TrackMap() {
 
     // Add opponents
     if (data.opponents && data.opponents.length > 0) {
-      data.opponents.forEach((opp: any) => {
+      data.opponents.forEach((opp) => {
         cars.push({
           carIdx: opp.carIdx,
           position: opp.position,
@@ -97,7 +97,7 @@ export function TrackMap() {
 
     // Add drivers (spectating mode)
     if (data.drivers && data.drivers.length > 0) {
-      data.drivers.forEach((driver: any) => {
+      data.drivers.forEach((driver) => {
         if (driver.lapDistPct !== undefined) {
           cars.push({
             carIdx: driver.carIdx,

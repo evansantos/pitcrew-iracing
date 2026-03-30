@@ -297,7 +297,11 @@ export class UndercutAnalyzer {
     const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
     const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
 
-    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const denominator = n * sumX2 - sumX * sumX;
+    if (denominator === 0) {
+      return { trend: 'stable', rate: 0 };
+    }
+    const slope = (n * sumXY - sumX * sumY) / denominator;
 
     let trend: 'closing' | 'opening' | 'stable';
     if (slope < -0.1) {

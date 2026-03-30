@@ -65,7 +65,7 @@ export function RaceEngineerAssistant() {
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!input.trim() || !isAvailable || !isLive) return;
+    if (!input.trim() || !isAvailable || !isLive || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),

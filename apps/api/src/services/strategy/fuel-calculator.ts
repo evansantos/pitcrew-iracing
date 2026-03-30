@@ -24,7 +24,12 @@ export class FuelCalculator {
 
     const fuelPerLap = this.calculateAverageFuelPerLap(validLaps);
     const currentFuel = validLaps[validLaps.length - 1]?.fuelRemaining || 0;
-    const lapsRemaining = sessionContext.totalLaps - sessionContext.currentLap;
+    const lapsRemaining = Math.max(0, sessionContext.totalLaps - sessionContext.currentLap);
+
+    // Guard against fuelPerLap being 0 — return safe defaults
+    if (fuelPerLap <= 0) {
+      return this.getDefaultStrategy(sessionContext);
+    }
 
     const requiredFuel = fuelPerLap * lapsRemaining;
     const refuelRequired = requiredFuel + this.SAFETY_MARGIN > currentFuel;
@@ -131,7 +136,7 @@ export class FuelCalculator {
       lapsRemaining
     );
 
-    if (fuelDeficit <= 0) return 0;
+    if (fuelDeficit <= 0 || lapsRemaining <= 0) return 0;
 
     // Calculate how much fuel to save per lap
     return fuelDeficit / lapsRemaining;

@@ -14,9 +14,11 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Get session history
   fastify.get('/history', async (request, reply) => {
-    return {
-      message: 'Session history - to be implemented',
-    };
+    return reply.code(501).send({
+      error: 'Not Implemented',
+      message: 'This endpoint is not yet implemented',
+      endpoint: request.url,
+    });
   });
 
   // Clean up old sessions

@@ -92,7 +92,7 @@ export function Opponents() {
         <p className="text-sm text-muted-foreground">No opponent data available</p>
       ) : (
         <div className="space-y-4">
-          {Object.entries(opponentsByClass).map(([className, classOpponents]) => (
+          {(Object.entries(opponentsByClass) as [string, OpponentData[]][]).map(([className, classOpponents]) => (
             <div key={className} className="space-y-2">
               {/* Class Header - only show if multiple classes */}
               {hasMultipleClasses && (
@@ -122,7 +122,7 @@ export function Opponents() {
             // In spectating mode: use isPlayer flag from driver data
             // In racing mode: use gapToPlayer === 0
             const isPlayer = spectating
-              ? (opponent as any).isPlayer === true
+              ? (opponent as OpponentData & { isPlayer?: boolean }).isPlayer === true
               : opponent.gapToPlayer === 0;
 
             return (
@@ -219,7 +219,7 @@ export function Opponents() {
                 const nextCar = sortedOpponents.find(
                   (o) => o.position === data.player.position - 1
                 );
-                return nextCar ? formatGap(nextCar.gapToPlayer) : 'N/A';
+                return nextCar?.gapToPlayer != null ? formatGap(nextCar.gapToPlayer) : 'N/A';
               })()}
             </div>
           </div>

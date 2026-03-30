@@ -2,7 +2,7 @@
 
 import { useWebSocket } from '@/hooks/use-websocket';
 import { useTelemetryStore } from '@/stores/telemetry-store';
-import { normalizeTelemetryData, isSpectatingMode } from '@/lib/telemetry-utils';
+import { normalizeTelemetryData } from '@/lib/telemetry-utils';
 
 export function TelemetryStatus() {
   useWebSocket(); // Initialize WebSocket connection

@@ -9,10 +9,9 @@ import { logger } from './utils/logger.js';
 import { telemetryRoutes } from './modules/telemetry/index.js';
 import { sessionRoutes } from './modules/session/index.js';
 import { raceEngineerRoutes } from './modules/race-engineer/index.js';
-import { redisService } from './services/cache/index.js';
-import { testConnection, closeDatabase } from './db/index.js';
 import { RaceEngineerLLM } from './services/ai/race-engineer-llm.js';
 import { StrategyEngine } from './services/strategy/strategy-engine.js';
+import type { ProcessedTelemetry } from '@iracing-race-engineer/shared';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,31 +20,6 @@ const __dirname = dirname(__filename);
 const strategyEngine = new StrategyEngine();
 
 async function start() {
-  // Initialize Redis
-  try {
-    logger.info('Connecting to Redis...');
-    await redisService.connect();
-    logger.info('Redis connected successfully');
-  } catch (error) {
-    logger.error({ error }, 'Failed to connect to Redis');
-    logger.warn('Continuing without Redis - caching will be disabled');
-  }
-
-  // Test database connection
-  try {
-    logger.info('Testing database connection...');
-    const dbConnected = await testConnection();
-    if (dbConnected) {
-      logger.info('Database connected successfully');
-    } else {
-      logger.error('Database connection failed');
-      process.exit(1);
-    }
-  } catch (error) {
-    logger.error({ error }, 'Failed to connect to database');
-    process.exit(1);
-  }
-
   // Check Ollama availability for AI Race Engineer
   try {
     logger.info('Checking Ollama AI service...');
@@ -176,9 +150,33 @@ async function start() {
   const racerRelays = new Map<string, string>(); // Map of racerName to socketId
 
   // Track last strategy emission per racer to prevent flickering
+  interface InlineStrategy {
+    fuelStrategy: {
+      currentFuel: number;
+      lapsUntilEmpty: number;
+      averageConsumption: number;
+      canFinish: boolean;
+      refuelRequired: boolean;
+    };
+    tireStrategy: {
+      currentWear: number;
+      healthPercentage: number;
+      canFinish: boolean;
+      changeRequired: boolean;
+    };
+    pitWindow: {
+      optimalLap: number;
+      windowStart: number;
+      windowEnd: number;
+      reason: string;
+    } | null;
+    recommendations: string[];
+    lastUpdated: string;
+  }
+
   interface StrategyCache {
     lastLap: number;
-    lastStrategy: any;
+    lastStrategy: InlineStrategy;
   }
   const strategyCache = new Map<string, StrategyCache>(); // Map of racerName to last strategy
 
@@ -251,7 +249,7 @@ async function start() {
     );
 
     // Handle telemetry data from Python relay
-    socket.on('relay:telemetry', (data: { racerName: string; telemetry: any }) => {
+    socket.on('relay:telemetry', (data: { racerName: string; telemetry: ProcessedTelemetry }) => {
       const player = data.telemetry?.player;
       const session = data.telemetry?.session;
       const fuel = data.telemetry?.fuel;
@@ -297,11 +295,12 @@ async function start() {
           const isUnlimitedSession = raceLapsRemaining > 10000;
           const MIN_FUEL_LAPS_THRESHOLD = 10; // Pit if fuel < 10 laps in unlimited sessions
 
-          // Calculate tire health (average of all tires)
-          const avgTireHealth = tires ? (
+          // Calculate tire health (average of all tires), clamped to [0, 1]
+          const rawTireHealth = tires ? (
             ((tires.lf?.avgWear || 0) + (tires.rf?.avgWear || 0) +
              (tires.lr?.avgWear || 0) + (tires.rr?.avgWear || 0)) / 4
           ) : 1.0;
+          const avgTireHealth = Math.max(0, Math.min(1, rawTireHealth));
 
           const tireHealthPct = avgTireHealth * 100;
 
@@ -330,7 +329,7 @@ async function start() {
             fuelStrategy: {
               currentFuel: fuel?.level || 0,
               lapsUntilEmpty: fuelLapsRemaining,
-              averageConsumption: fuel?.avgPerLap || 0,
+              averageConsumption: fuel?.usePerHour || 0,
               canFinish: !needsFuel,
               refuelRequired: needsFuel,
             },
@@ -343,10 +342,10 @@ async function start() {
             pitWindow: needsPit ? {
               optimalLap: optimalPitLap,
               windowStart: Math.max(currentLap + 1, optimalPitLap - 2),
-              windowEnd: Math.min(raceLapsRemaining, optimalPitLap + 2),
+              windowEnd: isUnlimitedSession ? optimalPitLap + 2 : Math.min(raceLapsRemaining, optimalPitLap + 2),
               reason: needsFuel && needsTires ? 'fuel + tires' : needsFuel ? 'fuel' : 'tires',
             } : null,
-            recommendations: [],
+            recommendations: [] as string[],
             lastUpdated: new Date().toISOString(),
           };
 
@@ -367,7 +366,7 @@ async function start() {
     });
 
     // Handle session data from Python relay
-    socket.on('relay:session', (sessionData: any) => {
+    socket.on('relay:session', (sessionData: { state: string; sessionType?: string; trackName?: string; [key: string]: unknown }) => {
       io.to('webapp').emit('session:update', sessionData);
       logger.info({ state: sessionData.state }, 'Session state update from relay');
     });
@@ -434,14 +433,6 @@ async function start() {
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down gracefully...');
-
-    // Close Redis connection
-    if (redisService.isReady()) {
-      await redisService.disconnect();
-    }
-
-    // Close database connection
-    await closeDatabase();
 
     // Close server (this also closes Socket.IO)
     await fastify.close();

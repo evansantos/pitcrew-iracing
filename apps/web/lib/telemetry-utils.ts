@@ -3,6 +3,31 @@
  * Supports both full telemetry (driving) and SessionInfo (spectating) modes
  */
 
+import type { OpponentData } from '@iracing-race-engineer/shared';
+
+interface DriverData {
+  carIdx: number;
+  position: number;
+  carNumber: string;
+  driverName: string;
+  carName?: string;
+  carClass?: string;
+  lapDistPct?: number;
+  isPlayer?: boolean;
+  lap?: number;
+  classPosition?: number;
+  lastLapTime?: number;
+  bestLapTime?: number;
+  gapToPlayer?: number;
+}
+
+interface DamageData {
+  lf: number;
+  rf: number;
+  lr: number;
+  rr: number;
+}
+
 export interface NormalizedTelemetryData {
   mode: 'full_telemetry' | 'session_info';
   player: {
@@ -38,6 +63,8 @@ export interface NormalizedTelemetryData {
     levelPct: number;
     usePerHour: number;
     lapsRemaining: number;
+    avgPerLap: number;
+    tankCapacity: number;
   };
   tires: {
     lf: { tempL: number; tempM: number; tempR: number; wearL: number; wearM: number; wearR: number; pressure: number; avgTemp: number; avgWear: number };
@@ -61,15 +88,16 @@ export interface NormalizedTelemetryData {
     type?: string;
     name?: string;
   };
-  opponents?: any[];
-  drivers?: any[];
-  damage?: any;
+  opponents?: OpponentData[];
+  drivers?: DriverData[];
+  damage?: DamageData;
 }
 
 /**
  * Normalize telemetry data to a consistent format
  * Handles both full telemetry and SessionInfo modes
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- accepts raw telemetry from multiple sources
 export function normalizeTelemetryData(data: any): NormalizedTelemetryData | null {
   if (!data) return null;
 
@@ -112,6 +140,8 @@ export function normalizeTelemetryData(data: any): NormalizedTelemetryData | nul
         levelPct: 0,
         usePerHour: 0,
         lapsRemaining: 0,
+        avgPerLap: 0,
+        tankCapacity: 0,
       },
       tires: data.tires || {
         lf: { tempL: 0, tempM: 0, tempR: 0, wearL: 1, wearM: 1, wearR: 1, pressure: 0, avgTemp: 0, avgWear: 1 },
@@ -144,7 +174,7 @@ export function normalizeTelemetryData(data: any): NormalizedTelemetryData | nul
   // SESSION INFO MODE (spectating)
   if (dataMode === 'session_info') {
     // Find player in drivers array
-    const playerDriver = data.drivers?.find((d: any) => d.isPlayer);
+    const playerDriver = data.drivers?.find((d: DriverData) => d.isPlayer);
 
     return {
       mode: 'session_info',
@@ -181,6 +211,8 @@ export function normalizeTelemetryData(data: any): NormalizedTelemetryData | nul
         levelPct: 0,
         usePerHour: 0,
         lapsRemaining: 0,
+        avgPerLap: 0,
+        tankCapacity: 0,
       },
       tires: {
         lf: { tempL: 0, tempM: 0, tempR: 0, wearL: 1, wearM: 1, wearR: 1, pressure: 0, avgTemp: 0, avgWear: 1 },
@@ -244,6 +276,8 @@ export function normalizeTelemetryData(data: any): NormalizedTelemetryData | nul
       levelPct: 0,
       usePerHour: 0,
       lapsRemaining: 0,
+      avgPerLap: 0,
+      tankCapacity: 0,
     },
     tires: {
       lf: { tempL: 0, tempM: 0, tempR: 0, wearL: 1, wearM: 1, wearR: 1, pressure: 0, avgTemp: 0, avgWear: 1 },
@@ -273,13 +307,14 @@ export function normalizeTelemetryData(data: any): NormalizedTelemetryData | nul
 /**
  * Check if we're in spectating mode (limited data)
  */
-export function isSpectatingMode(data: any): boolean {
-  return data?.mode === 'session_info';
+export function isSpectatingMode(data: unknown): boolean {
+  return (data as NormalizedTelemetryData | null)?.mode === 'session_info';
 }
 
 /**
  * Check if full telemetry data is available
  */
-export function hasFullTelemetry(data: any): boolean {
-  return data?.mode === 'full_telemetry' || !!data?.player;
+export function hasFullTelemetry(data: unknown): boolean {
+  const d = data as NormalizedTelemetryData | null;
+  return d?.mode === 'full_telemetry' || !!d?.player;
 }

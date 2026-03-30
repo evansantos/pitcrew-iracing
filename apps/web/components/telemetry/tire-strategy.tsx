@@ -106,13 +106,12 @@ export function TireStrategy() {
 
   // Calculate tire wear rate (% per lap) - use local calculation
   let tireWearRate = 0;
-  let debugInfo = '';
   let lapsOnTires = 0;
   let changeRecommended = false;
 
   if (useBackendStrategy && backendStrategy.tireStrategy) {
     // Use backend tire change recommendation
-    changeRecommended = backendStrategy.tireStrategy.changeRequired || false;
+    changeRecommended = backendStrategy.tireStrategy.changeRecommended || false;
   }
 
   // Always use local calculation for wear rate since backend doesn't provide degradation rate
