@@ -67,7 +67,7 @@ pnpm dev
 
 The application will be available at:
 - **Frontend**: http://localhost:3003
-- **API**: http://localhost:3001
+- **API**: http://localhost:3000
 
 ## Environment Variables
 
@@ -82,7 +82,7 @@ IRACING_RELAY_HOST=192.168.1.100
 IRACING_RELAY_PORT=3002
 
 # API port
-API_PORT=3001
+API_PORT=3000
 
 # AI (optional — requires Ollama)
 OLLAMA_BASE_URL=http://localhost:11434

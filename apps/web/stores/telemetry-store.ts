@@ -81,10 +81,10 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
     }),
 
   setConnected: (connected) =>
-    set({
+    set((state) => ({
       connected,
-      isLive: connected ? undefined : false,
-    }),
+      isLive: connected ? state.isLive : false,
+    })),
 
   setLive: (isLive) => set({ isLive }),
 

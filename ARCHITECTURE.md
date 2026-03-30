@@ -15,21 +15,30 @@ The iRacing Race Engineer is a real-time telemetry analysis and race strategy ap
                         │ 60Hz Telemetry Data
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Backend API (Fastify)                    │
+│              Relay (Python or TypeScript)                   │
+│          tools/relay/ — raw WebSocket bridge                │
+│       Forwards SDK frames to the API over WebSocket         │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ WebSocket (ws)
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Backend API (Fastify) — port 3000              │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │           Telemetry Processing Pipeline             │   │
-│  │  - node-irsdk Reader                                │   │
+│  │  - Remote Telemetry Service (WebSocket client)      │   │
 │  │  - Data Validation (Zod)                            │   │
 │  │  - Strategy Calculations                            │   │
 │  │  - Event Detection                                  │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                          │                                  │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
-│  │  PostgreSQL  │   │    Redis     │   │   BullMQ     │   │
-│  │  (History)   │   │   (Cache)    │   │  (Jobs)      │   │
-│  └──────────────┘   └──────────────┘   └──────────────┘   │
+│  ┌──────────────────┐   ┌──────────────────────────────┐   │
+│  │  In-Memory Cache │   │  Session Manager (in-memory) │   │
+│  │  (Map-based)     │   │  Lap history, session state  │   │
+│  └──────────────────┘   └──────────────────────────────┘   │
+│                                                             │
+│  Socket.IO server shares port 3000 with the HTTP API       │
 └───────────────────────┬─────────────────────────────────────┘
-                        │ WebSocket (Socket.io)
+                        │ WebSocket (Socket.IO on port 3000)
                         │ Real-time Events
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -51,15 +60,14 @@ The iRacing Race Engineer is a real-time telemetry analysis and race strategy ap
 ### 1. Telemetry Ingestion (60Hz)
 
 ```typescript
-iRacing SDK → node-irsdk → TelemetryService
+iRacing SDK → Relay (WebSocket) → RemoteTelemetryService
     ↓
 Validation (Zod schemas)
     ↓
 ProcessedTelemetry
     ↓
-├─→ WebSocket (immediate broadcast)
-├─→ Redis Cache (recent data)
-└─→ PostgreSQL (historical storage)
+├─→ Socket.IO (immediate broadcast on port 3000)
+└─→ In-Memory Session Manager (lap history, session state)
 ```
 
 ### 2. Strategy Calculation Pipeline
@@ -124,9 +132,11 @@ apps/api/src/
 ├── websocket/
 │   ├── server.ts             # Socket.io server setup
 │   └── handlers.ts           # Event handlers
-├── database/
-│   ├── schema.ts             # Drizzle schema definitions
-│   └── migrations/           # Database migrations
+├── services/
+│   ├── strategy/             # Strategy engine + calculators
+│   │   └── __tests__/        # Strategy engine test suite
+│   ├── remote-telemetry/     # WebSocket client for relay
+│   └── ai/                   # AI service integrations
 └── utils/
     ├── logger.ts             # Pino logger
     └── validation.ts         # Validation helpers
@@ -238,78 +248,30 @@ const { recommendation, opportunities } = useStrategy();
 const { opponents, gaps } = useOpponents();
 ```
 
-## Database Schema
+## Storage
 
-### PostgreSQL Tables
+### In-Memory Session Manager
 
-```sql
--- Sessions
-CREATE TABLE sessions (
-  id UUID PRIMARY KEY,
-  session_type VARCHAR(50),
-  track_name VARCHAR(255),
-  track_id INTEGER,
-  start_time TIMESTAMP,
-  end_time TIMESTAMP,
-  created_at TIMESTAMP DEFAULT NOW()
-);
+All session and lap data is held in-memory via `SessionManager` (a singleton).
+There is no external database — the application is stateless across restarts.
 
--- Telemetry History (Time-series data)
-CREATE TABLE telemetry (
-  id BIGSERIAL PRIMARY KEY,
-  session_id UUID REFERENCES sessions(id),
-  timestamp BIGINT,
-  session_time REAL,
-  data JSONB,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Race Events
-CREATE TABLE race_events (
-  id UUID PRIMARY KEY,
-  session_id UUID REFERENCES sessions(id),
-  event_type VARCHAR(50),
-  timestamp BIGINT,
-  session_time REAL,
-  lap INTEGER,
-  data JSONB,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Pit Stops
-CREATE TABLE pit_stops (
-  id UUID PRIMARY KEY,
-  session_id UUID REFERENCES sessions(id),
-  car_idx INTEGER,
-  lap INTEGER,
-  pit_in_time REAL,
-  pit_out_time REAL,
-  duration REAL,
-  reason VARCHAR(50),
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Indexes for performance
-CREATE INDEX idx_telemetry_session ON telemetry(session_id, timestamp);
-CREATE INDEX idx_events_session ON race_events(session_id, timestamp);
-CREATE INDEX idx_pitstops_session ON pit_stops(session_id, lap);
+```typescript
+SessionManager {
+  currentSession: SessionData | null   // track, car, driver, session type
+  lapHistory: Map<number, LapData>     // keyed by lap number
+}
 ```
 
-### Redis Cache Structure
+Key operations:
+- `startSession()` / `endSession()` — lifecycle management
+- `recordLap()` — append lap telemetry
+- `getRecentLaps(count)` — last N laps for strategy calculations
 
-```
-# Session data (TTL: 24h)
-session:{sessionId}:info -> SessionInfo
-session:{sessionId}:telemetry -> ProcessedTelemetry (latest)
-session:{sessionId}:opponents -> OpponentData[]
+### In-Memory Cache
 
-# Real-time buffers (TTL: 1h)
-telemetry:buffer:{sessionId} -> CircularBuffer<Telemetry>
-strategy:current:{sessionId} -> StrategyRecommendation
-
-# Connection tracking
-connections:active -> Set<socketId>
-```
+Frequently accessed data (current telemetry snapshot, latest strategy
+recommendation) is stored in plain JavaScript `Map` objects within each
+service. No external cache (Redis or otherwise) is required.
 
 ## Performance Optimization
 
@@ -317,7 +279,7 @@ connections:active -> Set<socketId>
 
 1. **Telemetry Processing**
    - Circular buffers for in-memory telemetry history
-   - Batch database writes every 5 seconds
+   - All state held in-memory (no database I/O overhead)
    - Separate worker threads for CPU-intensive calculations
 
 2. **WebSocket Optimization**
@@ -326,9 +288,9 @@ connections:active -> Set<socketId>
    - Room-based broadcasting for multi-user support
 
 3. **Caching Strategy**
-   - Redis for frequently accessed data
-   - In-memory cache for current session
-   - Stale-while-revalidate for historical data
+   - In-memory Maps for frequently accessed data
+   - Session Manager holds current session and lap history
+   - Stale-while-revalidate on the frontend via TanStack Query
 
 ### Frontend Optimizations
 
@@ -350,28 +312,35 @@ connections:active -> Set<socketId>
    - Debouncing non-critical updates
    - Web Workers for heavy calculations
 
-## Deployment Architecture
+## Deployment
 
 ### Development
 
 ```
 Local Machine:
-- pnpm dev (all services)
-- PostgreSQL (Docker or local)
-- Redis (Docker or local)
+- pnpm dev          → starts API (port 3000) + Next.js frontend
+- Relay (optional)  → tools/relay/ on Windows for live iRacing data
+- No external services required (no DB, no cache daemon)
 ```
 
-### Production
+### TypeScript Relay (`tools/relay/`)
+
+A lightweight raw-WebSocket server that runs on the Windows machine where
+iRacing is active. It reads SDK memory-mapped files and forwards telemetry
+frames over WebSocket to the API. This is an alternative to the original
+Python relay, rewritten in TypeScript for tighter integration with the
+monorepo toolchain.
 
 ```
-Kubernetes Cluster:
-├── API Pods (3 replicas)
-│   └── Horizontal Pod Autoscaler
-├── Web Pods (2 replicas)
-│   └── CDN (CloudFlare)
-├── PostgreSQL (Managed Service)
-├── Redis Cluster (Managed Service)
-└── Load Balancer
+tools/relay/
+├── src/
+│   ├── index.ts        # Entry point + CLI (--mock flag)
+│   ├── ws-server.ts    # WebSocket server on port 3002
+│   ├── encoder.ts      # Binary frame encoder
+│   ├── types.ts        # Shared telemetry types
+│   └── __tests__/      # Encoder unit tests (Vitest)
+├── package.json
+└── tsconfig.json
 ```
 
 ## Security Considerations
@@ -380,7 +349,6 @@ Kubernetes Cluster:
    - Rate limiting on all endpoints
    - CORS configuration for production
    - Input validation with Zod
-   - SQL injection prevention (parameterized queries)
 
 2. **WebSocket Security**
    - Authentication token verification
@@ -401,7 +369,6 @@ Kubernetes Cluster:
 - WebSocket message rate
 - Active connections count
 - API response times
-- Database query performance
 - Memory/CPU usage
 
 ### Logging
@@ -417,7 +384,6 @@ logger.error({ error }, 'Failed to process telemetry');
 
 - Telemetry processing > 100ms
 - WebSocket disconnect rate > 10%
-- Database connection failures
 - Memory usage > 80%
 - Error rate > 1%
 

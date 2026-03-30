@@ -23,6 +23,13 @@ export interface IRacingClientEvents {
 export function transformTelemetry(data: IRacingRawTelemetry): TelemetryFrame {
   const fuelLevel = data.FuelLevel ?? 0;
   const fuelUsePerHour = data.FuelUsePerHour ?? 1;
+  const lastLapTime = data.LapLastLapTime ?? 0;
+
+  // Estimate fuel per lap: (usePerHour / 3600) * lapTimeSeconds
+  // Falls back to 0 if no valid lap time or fuel data
+  const fuelPerLap = (fuelUsePerHour > 0 && lastLapTime > 0)
+    ? (fuelUsePerHour / 3600) * lastLapTime
+    : 0;
 
   return {
     timestamp: Date.now(),
@@ -37,7 +44,7 @@ export function transformTelemetry(data: IRacingRawTelemetry): TelemetryFrame {
       lap: data.Lap ?? 0,
       lapDistPct: data.LapDistPct ?? 0,
       currentLapTime: data.LapCurrentLapTime ?? 0,
-      lastLapTime: data.LapLastLapTime ?? 0,
+      lastLapTime,
       bestLapTime: data.LapBestLapTime ?? 0,
       position: data.Position ?? 0,
       classPosition: data.ClassPosition ?? 0,
@@ -47,8 +54,8 @@ export function transformTelemetry(data: IRacingRawTelemetry): TelemetryFrame {
       level: fuelLevel,
       levelPct: data.FuelLevelPct != null ? data.FuelLevelPct * 100 : 0,
       usePerHour: fuelUsePerHour,
-      lapsRemaining: fuelUsePerHour > 0
-        ? Math.floor(fuelLevel / (fuelUsePerHour / 60))
+      lapsRemaining: fuelPerLap > 0
+        ? Math.floor(fuelLevel / fuelPerLap)
         : 0,
     },
 
@@ -253,8 +260,10 @@ export class MockIRacingClient extends BaseIRacingClient {
 
     // Advance simulation
     s.sessionTime += dt;
+    const prevDistPct = s.lapDistPct;
     s.lapDistPct = (s.lapDistPct + 0.001 * (s.speed / 100)) % 1;
-    if (s.lapDistPct < 0.002) {
+    // Only increment lap when crossing the finish line (wrap from high to low)
+    if (s.lapDistPct < prevDistPct) {
       s.lap += 1;
     }
 

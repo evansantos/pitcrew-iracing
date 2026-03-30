@@ -37,7 +37,6 @@ for (const envPath of envPaths) {
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PORT: z.string().transform(Number).default('3000'),
-  SOCKET_PORT: z.string().transform(Number).default('3001'),
   IRSDK_PATH: z.string().optional(),
   TELEMETRY_RATE: z.string().transform(Number).default('60'),
   ENABLE_VOICE_ALERTS: z.string().transform((v) => v === 'true').default('false'),
@@ -55,9 +54,6 @@ export const config = {
   api: {
     port: env.API_PORT,
     host: '0.0.0.0',
-  },
-  socket: {
-    port: env.SOCKET_PORT,
   },
   telemetry: {
     rate: env.TELEMETRY_RATE,
