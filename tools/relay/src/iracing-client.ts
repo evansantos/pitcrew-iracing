@@ -47,7 +47,9 @@ export function transformTelemetry(data: IRacingRawTelemetry): TelemetryFrame {
       level: fuelLevel,
       levelPct: data.FuelLevelPct != null ? data.FuelLevelPct * 100 : 0,
       usePerHour: fuelUsePerHour,
-      lapsRemaining: Math.floor(fuelLevel / (fuelUsePerHour / 60)),
+      lapsRemaining: fuelUsePerHour > 0
+        ? Math.floor(fuelLevel / (fuelUsePerHour / 60))
+        : 0,
     },
 
     tires: {

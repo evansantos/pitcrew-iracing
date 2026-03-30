@@ -7,7 +7,7 @@ describe('session module', () => {
   describe('GET /', () => {
     it('returns session info shape', () => {
       const response = {
-        session: { sessionDbId: null, sessionId: null },
+        session: { sessionId: null },
         isActive: false,
         timestamp: new Date().toISOString(),
       };

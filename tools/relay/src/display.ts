@@ -67,6 +67,7 @@ export function formatGear(gear: number): string {
 
 /** Bar visualisation, e.g. `████░░░░░░` out of `width` chars. */
 export function bar(value: number, max: number, width: number = 10): string {
+  if (max <= 0) return '░'.repeat(width);
   const filled = Math.round((Math.min(value, max) / max) * width);
   const empty = width - filled;
   return '█'.repeat(filled) + '░'.repeat(empty);

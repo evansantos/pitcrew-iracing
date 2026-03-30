@@ -162,7 +162,7 @@ async function start() {
       currentWear: number;
       healthPercentage: number;
       canFinish: boolean;
-      changeRequired: boolean;
+      changeRecommended: boolean;
     };
     pitWindow: {
       optimalLap: number;
@@ -325,11 +325,16 @@ async function start() {
             optimalPitLap = currentLap + (tireHealthPct < 20 ? 1 : 3);
           }
 
+          // Estimate per-lap fuel consumption from available data
+          const estimatedFuelPerLap = (fuelLapsRemaining > 0 && fuel?.level)
+            ? fuel.level / fuelLapsRemaining
+            : 0;
+
           const strategy = {
             fuelStrategy: {
               currentFuel: fuel?.level || 0,
               lapsUntilEmpty: fuelLapsRemaining,
-              averageConsumption: fuel?.usePerHour || 0,
+              averageConsumption: estimatedFuelPerLap,
               canFinish: !needsFuel,
               refuelRequired: needsFuel,
             },
@@ -337,7 +342,7 @@ async function start() {
               currentWear: avgTireHealth,
               healthPercentage: tireHealthPct,
               canFinish: !needsTires,
-              changeRequired: needsTires,
+              changeRecommended: needsTires,
             },
             pitWindow: needsPit ? {
               optimalLap: optimalPitLap,

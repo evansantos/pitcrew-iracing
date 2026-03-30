@@ -186,6 +186,15 @@ describe('bar', () => {
   it('uses default width of 10', () => {
     expect(bar(0, 10)).toHaveLength(10);
   });
+
+  it('handles max of 0 without NaN', () => {
+    expect(bar(5, 0, 10)).toBe('░░░░░░░░░░');
+    expect(bar(0, 0, 10)).toBe('░░░░░░░░░░');
+  });
+
+  it('handles negative max', () => {
+    expect(bar(5, -1, 10)).toBe('░░░░░░░░░░');
+  });
 });
 
 // ─── buildDashboard ───────────────────────────────────────────────────────────

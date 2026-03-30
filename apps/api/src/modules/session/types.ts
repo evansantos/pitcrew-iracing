@@ -1,5 +1,4 @@
 export interface SessionInfo {
-  sessionDbId: number | null;
   sessionId: string | null;
 }
 

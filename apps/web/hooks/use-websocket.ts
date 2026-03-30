@@ -48,6 +48,7 @@ export function useWebSocket(): UseWebSocketReturn {
       console.log(`WebSocket disconnected from API server: ${reason}`);
       setConnected(false);
       setStoreConnected(false);
+      setLive(false);
     });
 
     newSocket.on('connect_error', (error) => {
