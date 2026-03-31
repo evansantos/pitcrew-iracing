@@ -38,7 +38,6 @@ export function FuelManagement() {
   }
 
   // Calculate fuel consumption per lap with fallback methods
-  const currentLap = data.player.lap || 0;
   const raceLapsRemaining = data.session.lapsRemaining || 0;
 
   let fuelPerLap = 0;
@@ -70,7 +69,14 @@ export function FuelManagement() {
             <span className="text-sm text-muted-foreground">Fuel Remaining</span>
             <span className="text-2xl font-bold">{(data.fuel.level || 0).toFixed(1)}L</span>
           </div>
-          <div className="h-8 w-full overflow-hidden rounded-lg bg-secondary">
+          <div
+            className="h-8 w-full overflow-hidden rounded-lg bg-secondary"
+            role="progressbar"
+            aria-valuenow={Math.round(data.fuel.levelPct || 0)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Fuel level"
+          >
             <div
               className={`h-full transition-all duration-300 ${
                 (data.fuel.levelPct || 0) > 30 ? 'bg-green-500' : (data.fuel.levelPct || 0) > 15 ? 'bg-yellow-500' : 'bg-red-500'

@@ -20,7 +20,7 @@ export class TireAnalyzer {
     }
 
     const latestLap = recentLaps[recentLaps.length - 1];
-    const currentWear = latestLap.avgTireWear || 0;
+    const currentWear = Math.max(0, Math.min(1, latestLap.avgTireWear || 0));
     const currentTemp = latestLap.avgTireTemp || 80;
 
     const degradationRate = this.calculateDegradationRate(recentLaps);
@@ -81,8 +81,9 @@ export class TireAnalyzer {
       tempFactor = Math.max(0.6, 1.0 - (overTemp / 50) * 0.4);
     }
 
-    // Wear factor - exponential degradation
-    const wearFactor = Math.exp(-2 * wear); // Exponential decay
+    // Wear factor - exponential degradation (clamp wear to [0,1] for valid output)
+    const clampedWear = Math.max(0, Math.min(1, wear));
+    const wearFactor = Math.exp(-2 * clampedWear); // Exponential decay
 
     // Combined performance
     const performance = tempFactor * wearFactor;
@@ -96,8 +97,8 @@ export class TireAnalyzer {
   private estimateLapsRemaining(currentWear: number, degradationRate: number): number {
     if (degradationRate <= 0) return 999;
 
-    const wearRemaining = 1.0 - currentWear;
-    const lapsToMax = wearRemaining / degradationRate;
+    // If already past 80% wear, no laps remaining before threshold
+    if (currentWear >= 0.8) return 0;
 
     // Use 80% wear as the limit for strategy purposes
     const lapsTo80Percent = (0.8 - currentWear) / degradationRate;
@@ -169,10 +170,10 @@ export class TireAnalyzer {
     const canFinish = expectedWearAtFinish < 0.9; // Allow up to 90% wear
 
     let recommendedPitLap = 0;
-    if (!canFinish) {
-      // Calculate when we'll hit 80% wear
-      const lapsTo80Percent = (0.8 - currentWear) / degradationRate;
-      recommendedPitLap = Math.floor(lapsTo80Percent);
+    if (!canFinish && degradationRate > 0) {
+      // Calculate when we'll hit 80% wear (guard against currentWear already past 80%)
+      const lapsTo80Percent = currentWear >= 0.8 ? 0 : (0.8 - currentWear) / degradationRate;
+      recommendedPitLap = Math.max(0, Math.floor(lapsTo80Percent));
     }
 
     return {

@@ -25,6 +25,10 @@ export function useWebSocket(): UseWebSocketReturn {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3000';
     const newSocket = io(wsUrl, {
       transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 10,
     });
 
     newSocket.on('connect', () => {
@@ -40,10 +44,25 @@ export function useWebSocket(): UseWebSocketReturn {
       newSocket.emit('subscribe:strategy');
     });
 
-    newSocket.on('disconnect', () => {
-      console.log('WebSocket disconnected from API server');
+    newSocket.on('disconnect', (reason) => {
+      console.log(`WebSocket disconnected from API server: ${reason}`);
       setConnected(false);
       setStoreConnected(false);
+      setLive(false);
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('WebSocket connection error:', error.message);
+      setConnected(false);
+      setStoreConnected(false);
+    });
+
+    newSocket.io.on('reconnect', (attemptNumber) => {
+      console.log(`WebSocket reconnected after ${attemptNumber} attempt(s)`);
+    });
+
+    newSocket.io.on('reconnect_attempt', (attemptNumber) => {
+      console.log(`WebSocket reconnection attempt ${attemptNumber}`);
     });
 
     // Handle relay connection status
@@ -74,22 +93,43 @@ export function useWebSocket(): UseWebSocketReturn {
     });
 
     newSocket.on('telemetry:update', (data: { racerName: string; telemetry: ProcessedTelemetry }) => {
-      updateTelemetry(data.racerName, data.telemetry);
+      try {
+        updateTelemetry(data.racerName, data.telemetry);
+      } catch (error) {
+        console.error('Error processing telemetry update:', error);
+      }
     });
 
     newSocket.on('strategy:update', (strategyData: StrategyRecommendation) => {
-      console.log('Strategy update received:', strategyData);
-      updateStrategy(strategyData);
+      try {
+        console.log('Strategy update received:', strategyData);
+        updateStrategy(strategyData);
+      } catch (error) {
+        console.error('Error processing strategy update:', error);
+      }
     });
 
-    newSocket.on('session:update', (sessionData: any) => {
+    newSocket.on('session:update', (sessionData: { sessionType?: string; trackName?: string; sessionTime?: number }) => {
       console.log('Session update received:', sessionData);
-      // Handle session updates from relay
+      // TODO: Wire to a session store when available
+      // For now, mark as live when session data arrives
+      setLive(true);
     });
 
     setSocket(newSocket);
 
     return () => {
+      newSocket.off('connect');
+      newSocket.off('disconnect');
+      newSocket.off('connect_error');
+      newSocket.off('relay:status');
+      newSocket.off('identify:ack');
+      newSocket.off('racers:list');
+      newSocket.off('telemetry:update');
+      newSocket.off('strategy:update');
+      newSocket.off('session:update');
+      newSocket.io.off('reconnect');
+      newSocket.io.off('reconnect_attempt');
       newSocket.close();
     };
   }, [updateTelemetry, updateStrategy, setStoreConnected, setRelayConnected, setAvailableRacers, setLive]);

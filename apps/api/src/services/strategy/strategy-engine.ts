@@ -11,6 +11,10 @@ import type {
   StrategyRecommendation,
   PitWindowRecommendation,
   GapAnalysis,
+  FuelStrategy,
+  TireDegradation,
+  UndercutAnalysis,
+  OvercutAnalysis,
 } from './types.js';
 import { FuelCalculator } from './fuel-calculator.js';
 import { TireAnalyzer } from './tire-analyzer.js';
@@ -99,8 +103,8 @@ export class StrategyEngine {
    */
   private calculatePitWindow(
     context: SessionContext,
-    fuelStrategy: any,
-    tireDegradation: any,
+    fuelStrategy: FuelStrategy,
+    tireDegradation: TireDegradation,
     currentLap: number
   ): PitWindowRecommendation | null {
     const lapsRemaining = context.totalLaps - currentLap;
@@ -173,11 +177,11 @@ export class StrategyEngine {
    */
   private generateRecommendations(
     context: SessionContext,
-    fuelStrategy: any,
-    tireDegradation: any,
+    fuelStrategy: FuelStrategy,
+    tireDegradation: TireDegradation,
     pitWindow: PitWindowRecommendation | null,
-    undercut: any,
-    overcut: any
+    undercut: UndercutAnalysis | null,
+    overcut: OvercutAnalysis | null
   ): StrategyRecommendation[] {
     const recommendations: StrategyRecommendation[] = [];
 
@@ -323,8 +327,8 @@ export class StrategyEngine {
    * Calculate pit window confidence
    */
   private calculatePitWindowConfidence(
-    fuelStrategy: any,
-    tireDegradation: any,
+    fuelStrategy: FuelStrategy,
+    tireDegradation: TireDegradation,
     currentLap: number
   ): number {
     let confidence = 0.5;

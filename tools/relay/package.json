@@ -1,0 +1,32 @@
+{
+  "name": "@iracing-race-engineer/relay",
+  "version": "2.0.0",
+  "description": "iRacing Telemetry Relay Server — TypeScript rewrite",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "iracing-relay": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts --mock",
+    "start": "node dist/index.js",
+    "start:mock": "node dist/index.js --mock",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

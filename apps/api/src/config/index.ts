@@ -37,9 +37,6 @@ for (const envPath of envPaths) {
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PORT: z.string().transform(Number).default('3000'),
-  SOCKET_PORT: z.string().transform(Number).default('3001'),
-  DATABASE_URL: z.string().default('postgresql://postgres:postgres@localhost:5432/race_engineer'),
-  REDIS_URL: z.string().default('redis://localhost:6379'),
   IRSDK_PATH: z.string().optional(),
   TELEMETRY_RATE: z.string().transform(Number).default('60'),
   ENABLE_VOICE_ALERTS: z.string().transform((v) => v === 'true').default('false'),
@@ -47,6 +44,7 @@ const envSchema = z.object({
   IRACING_MODE: z.enum(['local', 'remote', 'mock']).default('mock'),
   IRACING_RELAY_HOST: z.string().optional(),
   IRACING_RELAY_PORT: z.string().transform(Number).default('3002'),
+  CORS_ORIGIN: z.string().optional(),
 });
 
 const env = envSchema.parse(process.env);
@@ -56,17 +54,6 @@ export const config = {
   api: {
     port: env.API_PORT,
     host: '0.0.0.0',
-  },
-  socket: {
-    port: env.SOCKET_PORT,
-  },
-  DATABASE_URL: env.DATABASE_URL,
-  REDIS_URL: env.REDIS_URL,
-  database: {
-    url: env.DATABASE_URL,
-  },
-  redis: {
-    url: env.REDIS_URL,
   },
   telemetry: {
     rate: env.TELEMETRY_RATE,
@@ -82,6 +69,8 @@ export const config = {
     voiceAlerts: env.ENABLE_VOICE_ALERTS,
   },
   cors: {
-    origin: env.NODE_ENV === 'production' ? ['https://yourdomain.com'] : true,
+    origin: env.NODE_ENV === 'production'
+      ? (env.CORS_ORIGIN ? env.CORS_ORIGIN.split(',') : ['http://localhost:3000'])
+      : true,
   },
 } as const;

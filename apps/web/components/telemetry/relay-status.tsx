@@ -68,9 +68,9 @@ export function RelayStatus() {
   };
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-card p-3">
+    <div className="flex items-center gap-3 rounded-lg border bg-card p-3" aria-live="polite">
       <div className="flex items-center gap-2">
-        <div className={`h-3 w-3 rounded-full ${getStatusColor()} animate-pulse`} />
+        <div className={`h-3 w-3 rounded-full ${getStatusColor()} animate-pulse`} aria-label={`Connection status: ${getStatusText()}`} />
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold">{getStatusText()}</span>

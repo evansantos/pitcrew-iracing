@@ -61,8 +61,6 @@ export function SessionInfo() {
     // Convert to number to ensure bitwise operations work correctly
     const flagValue = Number(flags);
 
-    console.log('Session Flags Value:', flagValue, 'Binary:', flagValue.toString(2));
-
     if (flagValue & SessionFlags.Checkered) activeFlags.push('Checkered');
     if (flagValue & SessionFlags.White) activeFlags.push('White');
     if (flagValue & SessionFlags.Green) activeFlags.push('Green');
