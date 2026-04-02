@@ -21,6 +21,14 @@
     "./types/strategy": {
       "types": "./dist/types/strategy.d.ts",
       "import": "./dist/types/strategy.js"
+    },
+    "./types/file-store": {
+      "types": "./dist/types/file-store.d.ts",
+      "import": "./dist/types/file-store.js"
+    },
+    "./types/protocol": {
+      "types": "./dist/types/protocol.d.ts",
+      "import": "./dist/types/protocol.js"
     }
   },
   "scripts": {

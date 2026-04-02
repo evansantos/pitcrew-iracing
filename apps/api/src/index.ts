@@ -10,14 +10,18 @@ import { telemetryRoutes } from './modules/telemetry/index.js';
 import { sessionRoutes } from './modules/session/index.js';
 import { raceEngineerRoutes } from './modules/race-engineer/index.js';
 import { RaceEngineerLLM } from './services/ai/race-engineer-llm.js';
-import { StrategyEngine } from './services/strategy/strategy-engine.js';
-import type { ProcessedTelemetry } from '@iracing-race-engineer/shared';
+import { FileStore } from './services/file-store/index.js';
+import { createSocketState, registerSocketHandlers } from './modules/telemetry/socket-handlers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Initialize strategy engine
-const strategyEngine = new StrategyEngine();
+// Initialize FileStore for telemetry persistence
+const fileStore = new FileStore({
+  dataDir: join(__dirname, '../data/sessions'),
+  autoFlushMs: 5000,
+  maxFramesPerSession: 0, // unlimited by default
+});
 
 async function start() {
   // Check Ollama availability for AI Race Engineer
@@ -127,319 +131,54 @@ async function start() {
     process.exit(1);
   }
 
-  // Initialize Socket.IO for real-time communication
-  // Attach to Fastify's HTTP server instead of creating a separate one
+  // Initialize Socket.IO
   const io = new Server(fastify.server, {
     cors: {
-      origin: '*', // Allow connections from Python relay on different machines
+      origin: '*',
       credentials: true,
     },
     transports: ['websocket', 'polling'],
   });
 
-  // Track relay connections by racer name
-  interface RelayInfo {
-    socketId: string;
-    racerName: string;
-    version: string;
-    mock: boolean;
-    connectedAt: Date;
-  }
+  // Track active FileStore sessions per racer
+  const racerSessions = new Map<string, string>();
 
-  const relayConnections = new Map<string, RelayInfo>(); // Map of socketId to relay info
-  const racerRelays = new Map<string, string>(); // Map of racerName to socketId
-
-  // Track last strategy emission per racer to prevent flickering
-  interface InlineStrategy {
-    fuelStrategy: {
-      currentFuel: number;
-      lapsUntilEmpty: number;
-      averageConsumption: number;
-      canFinish: boolean;
-      refuelRequired: boolean;
-    };
-    tireStrategy: {
-      currentWear: number;
-      healthPercentage: number;
-      canFinish: boolean;
-      changeRecommended: boolean;
-    };
-    pitWindow: {
-      optimalLap: number;
-      windowStart: number;
-      windowEnd: number;
-      reason: string;
-    } | null;
-    recommendations: string[];
-    lastUpdated: string;
-  }
-
-  interface StrategyCache {
-    lastLap: number;
-    lastStrategy: InlineStrategy;
-  }
-  const strategyCache = new Map<string, StrategyCache>(); // Map of racerName to last strategy
-
-  io.on('connection', (socket) => {
-    logger.info(`Client connected: ${socket.id}`);
-
-    // Handle client identification (relay vs webapp)
-    socket.on(
-      'identify',
-      (data: {
-        type: 'relay' | 'webapp';
-        version?: string;
-        racerName?: string;
-        mock?: boolean;
-      }) => {
-        if (data.type === 'relay') {
-          const racerName = data.racerName || 'Default Racer';
-          const relayInfo: RelayInfo = {
-            socketId: socket.id,
+  // Set up Socket.IO handlers with FileStore integration
+  const socketState = createSocketState();
+  registerSocketHandlers(io, socketState, [
+    {
+      onTelemetry: (racerName, telemetry) => {
+        // Auto-record telemetry to FileStore
+        let sessionId = racerSessions.get(racerName);
+        if (!sessionId) {
+          sessionId = fileStore.startSession({
             racerName,
-            version: data.version || 'unknown',
-            mock: data.mock || false,
-            connectedAt: new Date(),
-          };
-
-          relayConnections.set(socket.id, relayInfo);
-          racerRelays.set(racerName, socket.id);
-          socket.join('relay');
-          socket.join(`relay:${racerName}`); // Join racer-specific room
-
-          logger.info(
-            `✅ Python relay connected: ${socket.id}, racer: ${racerName}, version: ${data.version || 'unknown'}, mock: ${data.mock}`
-          );
-
-          // Acknowledge relay connection
-          socket.emit('identify:ack', {
-            status: 'connected',
-            racerName,
-            message: 'Relay identified and ready to send telemetry',
+            trackName: telemetry.track?.name || 'Unknown',
+            carName: telemetry.player?.carName || 'Unknown',
+            sessionType: telemetry.session?.type || 'unknown',
           });
-
-          // Notify all webapp clients about available racers
-          const availableRacers = Array.from(racerRelays.keys()).map((name) => ({
-            name,
-            mock: relayConnections.get(racerRelays.get(name)!)?.mock || false,
-          }));
-          logger.info(
-            `🏁 Racer "${racerName}" connected${data.mock ? ' (MOCK MODE)' : ''} | ` +
-            `Total racers: ${availableRacers.length} | ` +
-            `Active: ${availableRacers.map(r => r.name).join(', ')}`
-          );
-          io.to('webapp').emit('racers:list', availableRacers);
-          io.to('webapp').emit('relay:status', { connected: true, racerName });
-        } else if (data.type === 'webapp') {
-          socket.join('webapp');
-
-          // Send available racers to new webapp client
-          const availableRacers = Array.from(racerRelays.keys()).map((name) => ({
-            name,
-            mock: relayConnections.get(racerRelays.get(name)!)?.mock || false,
-          }));
-          logger.info(
-            `🌐 Webapp connected | ` +
-            `Available racers: ${availableRacers.length > 0 ? availableRacers.map(r => r.name).join(', ') : 'None'}`
-          );
-          socket.emit('racers:list', availableRacers);
-          socket.emit('relay:status', { connected: relayConnections.size > 0 });
+          racerSessions.set(racerName, sessionId);
+          logger.info(`📁 FileStore: recording session ${sessionId} for ${racerName}`);
         }
-      }
-    );
+        fileStore.recordFrame(sessionId, telemetry);
+      },
+    },
+  ]);
 
-    // Handle telemetry data from Python relay
-    socket.on('relay:telemetry', (data: { racerName: string; telemetry: ProcessedTelemetry }) => {
-      const player = data.telemetry?.player;
-      const session = data.telemetry?.session;
-      const fuel = data.telemetry?.fuel;
-      const tires = data.telemetry?.tires;
-
-      logger.info(
-        `📊 [${data.racerName}] Lap ${player?.lap || 0} | ` +
-        `Speed: ${Math.round(player?.speed || 0)} km/h | ` +
-        `Gear: ${player?.gear || 0} | ` +
-        `Fuel: ${fuel?.level?.toFixed(1) || 0}L | ` +
-        `Position: ${player?.position || 'N/A'}`
-      );
-
-      // Broadcast telemetry to all webapp clients with racer info
-      io.to('webapp').emit('telemetry:update', {
-        racerName: data.racerName,
-        telemetry: data.telemetry,
-      });
-      io.to('telemetry').emit('telemetry:update', {
-        racerName: data.racerName,
-        telemetry: data.telemetry,
-      });
-
-      // Calculate and broadcast strategy (throttled to once per lap to prevent flickering)
-      try {
-        const currentLap = player?.lap || 0;
-        const cachedStrategy = strategyCache.get(data.racerName);
-
-        // Only calculate strategy once per lap (when lap changes) or on first telemetry
-        if (!cachedStrategy || cachedStrategy.lastLap !== currentLap) {
-          // Calculate basic strategy from telemetry data
-          const fuelLapsRemaining = fuel?.lapsRemaining || 0;
-          const raceLapsRemaining = session?.lapsRemaining || 0;
-
-          // Skip strategy calculation if we don't have valid fuel data
-          // This prevents sending bad data (0 laps) that overrides relay calculations
-          if (!fuel?.lapsRemaining || fuel.lapsRemaining <= 0) {
-            logger.debug(`📈 [${data.racerName}] Skipping strategy - no valid fuel data yet`);
-            return;
-          }
-
-          // Handle unlimited sessions (practice/qualify)
-          const isUnlimitedSession = raceLapsRemaining > 10000;
-          const MIN_FUEL_LAPS_THRESHOLD = 10; // Pit if fuel < 10 laps in unlimited sessions
-
-          // Calculate tire health (average of all tires), clamped to [0, 1]
-          const rawTireHealth = tires ? (
-            ((tires.lf?.avgWear || 0) + (tires.rf?.avgWear || 0) +
-             (tires.lr?.avgWear || 0) + (tires.rr?.avgWear || 0)) / 4
-          ) : 1.0;
-          const avgTireHealth = Math.max(0, Math.min(1, rawTireHealth));
-
-          const tireHealthPct = avgTireHealth * 100;
-
-          // Determine if pit is needed
-          // For unlimited sessions: check if fuel < threshold
-          // For races: check if fuel insufficient to finish
-          const needsFuel = isUnlimitedSession
-            ? fuelLapsRemaining < MIN_FUEL_LAPS_THRESHOLD
-            : fuelLapsRemaining < raceLapsRemaining;
-          const needsTires = tireHealthPct < 30;
-          const needsPit = needsFuel || needsTires;
-
-          // Calculate optimal pit lap
-          let optimalPitLap = 0;
-          if (needsFuel && needsTires) {
-            const fuelUrgency = Math.max(0, fuelLapsRemaining - 2);
-            const tireUrgency = tireHealthPct < 20 ? 1 : 3;
-            optimalPitLap = currentLap + Math.min(fuelUrgency, tireUrgency);
-          } else if (needsFuel) {
-            optimalPitLap = currentLap + Math.max(0, fuelLapsRemaining - 2);
-          } else if (needsTires) {
-            optimalPitLap = currentLap + (tireHealthPct < 20 ? 1 : 3);
-          }
-
-          // Estimate per-lap fuel consumption from available data
-          const estimatedFuelPerLap = (fuelLapsRemaining > 0 && fuel?.level)
-            ? fuel.level / fuelLapsRemaining
-            : 0;
-
-          const strategy = {
-            fuelStrategy: {
-              currentFuel: fuel?.level || 0,
-              lapsUntilEmpty: fuelLapsRemaining,
-              averageConsumption: estimatedFuelPerLap,
-              canFinish: !needsFuel,
-              refuelRequired: needsFuel,
-            },
-            tireStrategy: {
-              currentWear: avgTireHealth,
-              healthPercentage: tireHealthPct,
-              canFinish: !needsTires,
-              changeRecommended: needsTires,
-            },
-            pitWindow: needsPit ? {
-              optimalLap: optimalPitLap,
-              windowStart: Math.max(currentLap + 1, optimalPitLap - 2),
-              windowEnd: isUnlimitedSession ? optimalPitLap + 2 : Math.min(raceLapsRemaining, optimalPitLap + 2),
-              reason: needsFuel && needsTires ? 'fuel + tires' : needsFuel ? 'fuel' : 'tires',
-            } : null,
-            recommendations: [] as string[],
-            lastUpdated: new Date().toISOString(),
-          };
-
-          // Cache the strategy
-          strategyCache.set(data.racerName, {
-            lastLap: currentLap,
-            lastStrategy: strategy,
-          });
-
-          // Broadcast strategy to webapp clients (only once per lap)
-          io.to('webapp').emit('strategy:update', strategy);
-
-          logger.debug(`📈 [${data.racerName}] Strategy calculated on lap ${currentLap} - Fuel: ${fuelLapsRemaining} laps, Tires: ${tireHealthPct.toFixed(0)}%`);
-        }
-      } catch (error) {
-        logger.error({ error }, 'Failed to calculate strategy');
-      }
-    });
-
-    // Handle session data from Python relay
-    socket.on('relay:session', (sessionData: { state: string; sessionType?: string; trackName?: string; [key: string]: unknown }) => {
-      io.to('webapp').emit('session:update', sessionData);
-      logger.info({ state: sessionData.state }, 'Session state update from relay');
-    });
-
-    // Webapp subscriptions (backward compatibility)
-    socket.on('subscribe:telemetry', () => {
-      socket.join('telemetry');
-      socket.join('webapp');
-      logger.info(`Client ${socket.id} subscribed to telemetry`);
-
-      // Send relay connection status
-      socket.emit('relay:status', { connected: relayConnections.size > 0 });
-    });
-
-    socket.on('subscribe:strategy', () => {
-      socket.join('telemetry');
-      socket.join('webapp');
-      logger.info(`Client ${socket.id} subscribed to strategy`);
-    });
-
-    socket.on('unsubscribe:telemetry', () => {
-      socket.leave('telemetry');
-      logger.info(`Client ${socket.id} unsubscribed from telemetry`);
-    });
-
-    socket.on('disconnect', () => {
-      // Check if disconnecting client is a relay
-      const relayInfo = relayConnections.get(socket.id);
-      if (relayInfo) {
-        const racerName = relayInfo.racerName;
-        relayConnections.delete(socket.id);
-        racerRelays.delete(racerName);
-        strategyCache.delete(racerName); // Clear strategy cache for disconnected racer
-
-        // Notify all webapp clients about updated racer list
-        const availableRacers = Array.from(racerRelays.keys()).map((name) => ({
-          name,
-          mock: relayConnections.get(racerRelays.get(name)!)?.mock || false,
-        }));
-        logger.warn(
-          `👋 Racer "${racerName}" disconnected | ` +
-          `Remaining: ${availableRacers.length > 0 ? availableRacers.map(r => r.name).join(', ') : 'None'}`
-        );
-        io.to('webapp').emit('racers:list', availableRacers);
-        io.to('webapp').emit('relay:status', {
-          connected: relayConnections.size > 0,
-          racerName,
-          disconnected: true,
-        });
-      } else {
-        logger.info(`Client disconnected: ${socket.id}`);
-      }
-    });
-  });
-
-  // Socket.IO is now attached to Fastify's server (port 3000)
-  // No need for separate httpServer.listen()
   logger.info(`Socket.IO attached to Fastify server on port ${config.api.port}`);
-
-  // Mock telemetry service completely removed
-  // All telemetry data now comes exclusively from Socket.IO relay
   logger.info('✅ Using Socket.IO relay for all telemetry data (mock service removed)');
 
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down gracefully...');
 
-    // Close server (this also closes Socket.IO)
+    // End all active FileStore sessions
+    for (const [racerName, sessionId] of racerSessions) {
+      fileStore.endSession(sessionId);
+      logger.info(`📁 FileStore: ended session ${sessionId} for ${racerName}`);
+    }
+    fileStore.close();
+
     await fastify.close();
 
     logger.info('Shutdown complete');
