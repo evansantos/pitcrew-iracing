@@ -73,7 +73,7 @@ export class RelayWebSocketServer {
 
   constructor(port: number, mockMode: boolean = false) {
     this.mockMode = mockMode;
-    this.wss = new WebSocketServer({ port });
+    this.wss = new WebSocketServer({ port, maxPayload: 1024 * 1024 });
     this.wss.on('connection', (ws, req) => this.onConnection(ws, req));
     this.wss.on('error', (err) => {
       console.error('[WSServer] Server error:', err);
@@ -127,11 +127,17 @@ export class RelayWebSocketServer {
     });
 
     ws.on('message', (data) => {
+      let msg: unknown;
       try {
-        const msg = JSON.parse(data.toString());
+        msg = JSON.parse(data.toString());
+      } catch (err) {
+        console.error(`[WSServer] Failed to parse message from ${ip}:`, err);
+        return;
+      }
+      try {
         this.handleMessage(ws, ip, msg);
-      } catch {
-        console.error(`[WSServer] Failed to parse message from ${ip}`);
+      } catch (err) {
+        console.error(`[WSServer] Error handling message from ${ip}:`, err);
       }
     });
 
@@ -272,8 +278,12 @@ export class RelayWebSocketServer {
     for (const [ws, client] of this.clients) {
       if (ws.readyState === WebSocket.OPEN) {
         const payload = client.protocolVersion === PROTOCOL_V2 ? v2Payload : v1Payload;
-        ws.send(payload);
-        totalBytes += Buffer.byteLength(payload, 'utf8');
+        try {
+          ws.send(payload);
+          totalBytes += Buffer.byteLength(payload, 'utf8');
+        } catch {
+          // Client errored mid-send — skip, will be cleaned up on close
+        }
       }
     }
 
@@ -308,16 +318,21 @@ export class RelayWebSocketServer {
     }
 
     return new Promise((resolve) => {
-      this.broadcast({
-        type: 'session',
-        data: { state: 'server_shutdown' },
-      });
+      const timeout = setTimeout(() => {
+        console.warn('[WSServer] Close timed out, forcing shutdown');
+        resolve();
+      }, 5000);
+
+      try {
+        this.broadcast({ type: 'session', data: { state: 'server_shutdown' } });
+      } catch { /* best-effort notification */ }
 
       for (const { ws } of this.clients.values()) {
-        ws.close();
+        try { ws.close(); } catch { /* best-effort */ }
       }
 
       this.wss.close(() => {
+        clearTimeout(timeout);
         console.log('[WSServer] Server closed');
         resolve();
       });

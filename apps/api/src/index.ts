@@ -134,7 +134,7 @@ async function start() {
   // Initialize Socket.IO
   const io = new Server(fastify.server, {
     cors: {
-      origin: '*',
+      origin: config.cors.origin,
       credentials: true,
     },
     transports: ['websocket', 'polling'],

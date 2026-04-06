@@ -61,7 +61,8 @@ export class OllamaProvider implements AIProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.statusText}`);
+      const body = await response.text().catch(() => '(unreadable)');
+      throw new Error(`Ollama API error (${response.status}): ${body}`);
     }
 
     const data = await response.json() as {
@@ -117,7 +118,8 @@ export class ClaudeProvider implements AIProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`Claude API error: ${response.statusText}`);
+      const body = await response.text().catch(() => '(unreadable)');
+      throw new Error(`Claude API error (${response.status}): ${body}`);
     }
 
     const data = await response.json() as {
@@ -164,7 +166,8 @@ export class OpenAIProvider implements AIProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.statusText}`);
+      const body = await response.text().catch(() => '(unreadable)');
+      throw new Error(`OpenAI API error (${response.status}): ${body}`);
     }
 
     const data = await response.json() as {
@@ -189,7 +192,9 @@ export function createAIProvider(provider?: string): AIProvider {
     case 'openai':
       return new OpenAIProvider();
     case 'ollama':
+      return new OllamaProvider();
     default:
+      console.warn(`[AI] Unknown provider "${name}", falling back to ollama`);
       return new OllamaProvider();
   }
 }

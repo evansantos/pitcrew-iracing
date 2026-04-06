@@ -156,6 +156,14 @@ export function parseSamples(
 export function parseIBT(buffer: Buffer): IBTParseResult {
   const header = parseIBTHeader(buffer);
 
+  // Bounds validation
+  if (header.sessionInfoOffset + header.sessionInfoLength > buffer.length) {
+    throw new Error('IBT file corrupted: session info extends beyond file boundary');
+  }
+  if (header.variableHeadersOffset > buffer.length) {
+    throw new Error('IBT file corrupted: variable headers offset beyond file boundary');
+  }
+
   // Session info
   const sessionInfoRaw = buffer.toString(
     'utf-8',

@@ -73,11 +73,17 @@ export class RemoteTelemetryClient extends EventEmitter {
       });
 
       this.ws.on('message', (data: Buffer) => {
+        let message: Record<string, unknown>;
         try {
-          const message = JSON.parse(data.toString());
+          message = JSON.parse(data.toString());
+        } catch (error) {
+          logger.error({ error }, 'Failed to parse relay message');
+          return;
+        }
+        try {
           this.handleMessage(message);
         } catch (error) {
-          logger.error({ error }, 'Failed to parse telemetry message');
+          logger.error({ error }, 'Error handling relay message');
         }
       });
 

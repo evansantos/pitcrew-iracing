@@ -3,6 +3,8 @@
  * Generates 6-char human-readable codes, tracks viewers, handles expiry.
  */
 
+import { randomInt } from 'crypto';
+
 export interface SharedSession {
   code: string;
   racerName: string;
@@ -93,7 +95,7 @@ export class SessionRegistry {
     do {
       code = Array.from(
         { length: 6 },
-        () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
+        () => CODE_CHARS[randomInt(CODE_CHARS.length)]
       ).join('');
     } while (this.sessions.has(code));
 

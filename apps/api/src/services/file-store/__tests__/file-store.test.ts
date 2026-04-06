@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { FileStore } from '../index.js';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { ProcessedTelemetry } from '@iracing-race-engineer/shared';
@@ -274,6 +274,32 @@ describe('FileStore', () => {
       expect(frames).toHaveLength(2);
 
       store2.close();
+    });
+
+    it('skips corrupt NDJSON lines and returns remaining valid frames', () => {
+      const sessionId = store.startSession({
+        racerName: 'Test Driver',
+        trackName: 'Spa',
+        carName: 'GT3',
+        sessionType: 'race',
+      });
+
+      store.recordFrame(sessionId, makeFrame(1, 0.0));
+      store.recordFrame(sessionId, makeFrame(1, 0.5));
+      store.recordFrame(sessionId, makeFrame(1, 1.0));
+      store.flush(sessionId);
+
+      // Corrupt line 2 (index 1) of the NDJSON file
+      const ndjsonPath = join(tmpDir, sessionId, 'frames.ndjson');
+      const lines = readFileSync(ndjsonPath, 'utf-8').split('\n');
+      lines[1] = '{corrupt json!!!';
+      writeFileSync(ndjsonPath, lines.join('\n'));
+
+      // End the session so subsequent reads go through readFramesFromDisk
+      store.endSession(sessionId);
+
+      const frames = store.getFrames({ sessionId });
+      expect(frames).toHaveLength(2);
     });
   });
 });

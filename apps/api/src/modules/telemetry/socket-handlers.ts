@@ -194,9 +194,12 @@ function handleRelayTelemetry(
         const isUnlimitedSession = raceLapsRemaining > 10000;
         const MIN_FUEL_LAPS_THRESHOLD = 10;
 
+        // Support both shared TireData (avgWear) and relay TireCorner (wear)
+        const getWear = (tire: Record<string, unknown> | undefined): number =>
+          (tire?.avgWear as number) ?? (tire?.wear as number) ?? 0;
         const rawTireHealth = tires ? (
-          ((tires.lf?.avgWear || 0) + (tires.rf?.avgWear || 0) +
-           (tires.lr?.avgWear || 0) + (tires.rr?.avgWear || 0)) / 4
+          (getWear(tires.lf as unknown as Record<string, unknown>) + getWear(tires.rf as unknown as Record<string, unknown>) +
+           getWear(tires.lr as unknown as Record<string, unknown>) + getWear(tires.rr as unknown as Record<string, unknown>)) / 4
         ) : 1.0;
         const avgTireHealth = Math.max(0, Math.min(1, rawTireHealth));
         const tireHealthPct = avgTireHealth * 100;

@@ -109,7 +109,10 @@ export class FileStore {
 
   recordFrame(sessionId: string, telemetry: ProcessedTelemetry): void {
     const session = this.activeSessions.get(sessionId);
-    if (!session) return;
+    if (!session) {
+      console.warn(`[FileStore] recordFrame called for unknown session: ${sessionId}`);
+      return;
+    }
 
     const seq = session.flushedCount + session.buffer.length;
     const lap = telemetry.player?.lap ?? 0;
@@ -292,7 +295,15 @@ export class FileStore {
     try {
       const content = readFileSync(dataFile, 'utf-8').trim();
       if (!content) return [];
-      return content.split('\n').map(line => JSON.parse(line));
+      const frames: StoredFrame[] = [];
+      for (const line of content.split('\n')) {
+        try {
+          frames.push(JSON.parse(line));
+        } catch {
+          // Skip corrupt line
+        }
+      }
+      return frames;
     } catch {
       return [];
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseIBTHeader, parseVariableHeaders, IBT_HEADER_SIZE, VARIABLE_HEADER_SIZE } from '../parser.js';
+import { parseIBTHeader, parseVariableHeaders, parseIBT, IBT_HEADER_SIZE, VARIABLE_HEADER_SIZE } from '../parser.js';
 
 describe('IBT Parser', () => {
   describe('parseIBTHeader', () => {
@@ -70,6 +70,40 @@ describe('IBT Parser', () => {
       expect(vars[0].name).toBe('Speed');
       expect(vars[0].type).toBe(1);
       expect(vars[0].unit).toBe('m/s');
+    });
+  });
+
+  describe('parseIBT', () => {
+    it('throws on sessionInfoOffset beyond buffer boundary', () => {
+      const buf = Buffer.alloc(IBT_HEADER_SIZE);
+      buf.writeInt32LE(1, 0);                // version
+      buf.writeInt32LE(0, 4);                // status
+      buf.writeInt32LE(60, 8);               // tickRate
+      buf.writeInt32LE(0, 12);               // sessionInfoUpdate
+      buf.writeInt32LE(1000, 16);            // sessionInfoLength (way too big)
+      buf.writeInt32LE(99999, 20);           // sessionInfoOffset (way past end)
+      buf.writeInt32LE(0, 24);               // numVariables
+      buf.writeInt32LE(IBT_HEADER_SIZE, 28); // variableHeadersOffset
+      buf.writeInt32LE(0, 32);               // numSamples
+      buf.writeInt32LE(IBT_HEADER_SIZE, 36); // sampleBufferOffset
+
+      expect(() => parseIBT(buf)).toThrow('corrupted');
+    });
+
+    it('throws on variableHeadersOffset beyond buffer boundary', () => {
+      const buf = Buffer.alloc(IBT_HEADER_SIZE);
+      buf.writeInt32LE(1, 0);                // version
+      buf.writeInt32LE(0, 4);                // status
+      buf.writeInt32LE(60, 8);               // tickRate
+      buf.writeInt32LE(0, 12);               // sessionInfoUpdate
+      buf.writeInt32LE(0, 16);               // sessionInfoLength
+      buf.writeInt32LE(0, 20);               // sessionInfoOffset
+      buf.writeInt32LE(5, 24);               // numVariables
+      buf.writeInt32LE(99999, 28);           // variableHeadersOffset (way past end)
+      buf.writeInt32LE(0, 32);               // numSamples
+      buf.writeInt32LE(IBT_HEADER_SIZE, 36); // sampleBufferOffset
+
+      expect(() => parseIBT(buf)).toThrow('corrupted');
     });
   });
 });
