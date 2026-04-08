@@ -5,6 +5,7 @@
 import type { Server, Socket } from 'socket.io';
 import type { ProcessedTelemetry } from '@iracing-race-engineer/shared';
 import { logger } from '../../utils/logger.js';
+import { SessionRegistry } from '../../services/sharing/session-registry.js';
 
 // --- Types ---
 
@@ -49,6 +50,9 @@ export interface SocketHandlerState {
   relayConnections: Map<string, RelayInfo>;
   racerRelays: Map<string, string>;
   strategyCache: Map<string, StrategyCache>;
+  lastTelemetry: Map<string, ProcessedTelemetry>;
+  registry: SessionRegistry;
+  sharingCodes: Map<string, string>; // racerName → code
 }
 
 export interface TelemetryListener {
@@ -62,6 +66,9 @@ export function createSocketState(): SocketHandlerState {
     relayConnections: new Map(),
     racerRelays: new Map(),
     strategyCache: new Map(),
+    lastTelemetry: new Map(),
+    registry: new SessionRegistry(),
+    sharingCodes: new Map(),
   };
 }
 
@@ -77,6 +84,7 @@ export function registerSocketHandlers(
     handleRelayTelemetry(io, socket, state, listeners);
     handleRelaySession(io, socket);
     handleSubscriptions(socket);
+    handleViewerJoin(io, socket, state);
     handleDisconnect(io, socket, state);
   });
 }
@@ -116,6 +124,11 @@ function handleIdentify(io: Server, socket: Socket, state: SocketHandlerState): 
           racerName,
           message: 'Relay identified and ready to send telemetry',
         });
+
+        // Create sharing session
+        const { code } = state.registry.createSession(racerName);
+        state.sharingCodes.set(racerName, code);
+        socket.emit('sharing:code', { code, racerName });
 
         const availableRacers = buildRacerList(state);
         logger.info(
@@ -169,6 +182,18 @@ function handleRelayTelemetry(
       racerName: data.racerName,
       telemetry: data.telemetry,
     });
+
+    // Cache latest telemetry snapshot for REST API
+    state.lastTelemetry.set(data.racerName, data.telemetry);
+
+    // Broadcast to sharing viewers
+    const shareCode = state.sharingCodes.get(data.racerName);
+    if (shareCode) {
+      io.to(`share:${shareCode}`).emit('telemetry:update', {
+        racerName: data.racerName,
+        telemetry: data.telemetry,
+      });
+    }
 
     // Notify listeners (e.g., FileStore recording)
     if (listeners) {
@@ -256,6 +281,12 @@ function handleRelayTelemetry(
 
         io.to('webapp').emit('strategy:update', strategy);
 
+        // Also broadcast strategy to sharing viewers
+        const stratShareCode = state.sharingCodes.get(data.racerName);
+        if (stratShareCode) {
+          io.to(`share:${stratShareCode}`).emit('strategy:update', strategy);
+        }
+
         logger.debug(`📈 [${data.racerName}] Strategy calculated on lap ${currentLap} - Fuel: ${fuelLapsRemaining} laps, Tires: ${tireHealthPct.toFixed(0)}%`);
       }
     } catch (error) {
@@ -299,6 +330,14 @@ function handleDisconnect(io: Server, socket: Socket, state: SocketHandlerState)
       state.racerRelays.delete(racerName);
       state.strategyCache.delete(racerName);
 
+      // End sharing session
+      const disconnectShareCode = state.sharingCodes.get(racerName);
+      if (disconnectShareCode) {
+        state.registry.endSession(disconnectShareCode);
+        io.to(`share:${disconnectShareCode}`).emit('sharing:ended', { code: disconnectShareCode });
+        state.sharingCodes.delete(racerName);
+      }
+
       const availableRacers = buildRacerList(state);
       logger.warn(
         `👋 Racer "${racerName}" disconnected | ` +
@@ -316,6 +355,53 @@ function handleDisconnect(io: Server, socket: Socket, state: SocketHandlerState)
   });
 }
 
+function handleViewerJoin(io: Server, socket: Socket, state: SocketHandlerState): void {
+  socket.on('join:share', (data: { code: string; viewerId?: string }) => {
+    const session = state.registry.getSession(data.code);
+    if (!session) {
+      socket.emit('sharing:error', { error: 'Session not found or expired' });
+      return;
+    }
+
+    const viewerId = data.viewerId || socket.id;
+    const added = state.registry.addViewer(data.code, viewerId);
+    if (!added) {
+      socket.emit('sharing:error', { error: 'Session full (max 10 viewers)' });
+      return;
+    }
+
+    socket.join(`share:${data.code}`);
+    socket.emit('sharing:joined', {
+      code: data.code,
+      racerName: session.racerName,
+      viewerCount: session.viewers.size,
+    });
+
+    // Notify driver of viewer count change
+    const driverSocketId = state.racerRelays.get(session.racerName);
+    if (driverSocketId) {
+      io.to(driverSocketId).emit('sharing:viewers', {
+        code: data.code,
+        viewerCount: session.viewers.size,
+      });
+    }
+
+    // Clean up on viewer disconnect
+    socket.on('disconnect', () => {
+      state.registry.removeViewer(data.code, viewerId);
+      if (driverSocketId) {
+        const updatedSession = state.registry.getSession(data.code);
+        if (updatedSession) {
+          io.to(driverSocketId).emit('sharing:viewers', {
+            code: data.code,
+            viewerCount: updatedSession.viewers.size,
+          });
+        }
+      }
+    });
+  });
+}
+
 // --- Helpers ---
 
 function buildRacerList(state: SocketHandlerState): { name: string; mock: boolean }[] {
@@ -323,4 +409,24 @@ function buildRacerList(state: SocketHandlerState): { name: string; mock: boolea
     name,
     mock: state.relayConnections.get(state.racerRelays.get(name)!)?.mock || false,
   }));
+}
+
+// --- REST API getters ---
+
+export function getLatestTelemetry(
+  state: SocketHandlerState,
+  racerName: string,
+): ProcessedTelemetry | undefined {
+  return state.lastTelemetry.get(racerName);
+}
+
+export function getLatestStrategy(
+  state: SocketHandlerState,
+  racerName: string,
+): StrategyCache['lastStrategy'] | undefined {
+  return state.strategyCache.get(racerName)?.lastStrategy;
+}
+
+export function getConnectedRacers(state: SocketHandlerState): { name: string; mock: boolean }[] {
+  return buildRacerList(state);
 }
