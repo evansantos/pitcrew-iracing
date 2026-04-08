@@ -2,6 +2,8 @@
 
 import { useTelemetryStore } from '@/stores/telemetry-store';
 import { normalizeTelemetryData, isSpectatingMode } from '@/lib/telemetry-utils';
+import { ArcGauge } from '@/components/gauges/arc-gauge';
+import { GearIndicator } from '@/components/gauges/gear-indicator';
 
 export function LiveGauges() {
   const rawData = useTelemetryStore((state) => state.data);
@@ -19,13 +21,6 @@ export function LiveGauges() {
   }
 
   const spectating = isSpectatingMode(rawData);
-
-  // Format gear display: -1 = R, 0 = N, 1+ = gear number
-  const formatGear = (gear: number): string => {
-    if (gear === -1) return 'R';
-    if (gear === 0) return 'N';
-    return gear.toString();
-  };
 
   // In spectating mode, show limited message
   if (spectating) {
@@ -51,34 +46,43 @@ export function LiveGauges() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Speed Gauge */}
         <div className="flex flex-col items-center">
-          <div className="relative h-32 w-32">
-            <CircularGauge value={data.player.speed} max={300} label="km/h" color="blue" />
-          </div>
-          <div className="mt-2 text-center">
-            <div className="text-3xl font-bold">{Math.round(data.player.speed)}</div>
-            <div className="text-xs text-muted-foreground">SPEED (km/h)</div>
-          </div>
+          <ArcGauge
+            value={data.player.speed}
+            max={300}
+            label="km/h"
+            size={160}
+            zones={[
+              { start: 0, end: 60, color: '#22c55e' },
+              { start: 60, end: 85, color: '#3b82f6' },
+              { start: 85, end: 100, color: '#ef4444' },
+            ]}
+          />
         </div>
 
         {/* RPM Gauge */}
         <div className="flex flex-col items-center">
-          <div className="relative h-32 w-32">
-            <CircularGauge value={data.player.rpm} max={9000} label="rpm" color="red" />
-          </div>
-          <div className="mt-2 text-center">
-            <div className="text-3xl font-bold">{Math.round(data.player.rpm)}</div>
-            <div className="text-xs text-muted-foreground">RPM</div>
-          </div>
+          <ArcGauge
+            value={data.player.rpm}
+            max={9000}
+            label="RPM"
+            size={160}
+            zones={[
+              { start: 0, end: 65, color: '#22c55e' },
+              { start: 65, end: 85, color: '#eab308' },
+              { start: 85, end: 100, color: '#ef4444' },
+            ]}
+            formatValue={(v) => Math.round(v).toLocaleString()}
+          />
         </div>
 
         {/* Gear Display */}
-        <div className="flex flex-col items-center justify-center">
-          <div className="flex h-32 w-32 items-center justify-center rounded-full border-4 border-primary bg-secondary">
-            <div className="text-6xl font-bold">{formatGear(data.player.gear)}</div>
-          </div>
-          <div className="mt-2 text-center">
-            <div className="text-xs text-muted-foreground">GEAR</div>
-          </div>
+        <div className="flex flex-col items-center">
+          <GearIndicator
+            gear={data.player.gear}
+            rpm={data.player.rpm}
+            maxRpm={9000}
+            size={160}
+          />
         </div>
       </div>
 
@@ -294,47 +298,3 @@ export function LiveGauges() {
   );
 }
 
-interface CircularGaugeProps {
-  value: number;
-  max: number;
-  label: string;
-  color: 'blue' | 'red';
-}
-
-function CircularGauge({ value, max, color }: CircularGaugeProps) {
-  const percentage = Math.min((value / max) * 100, 100);
-  const circumference = 2 * Math.PI * 45; // radius = 45
-  const offset = circumference - (percentage / 100) * circumference;
-
-  const colorMap = {
-    blue: 'stroke-blue-500',
-    red: 'stroke-red-500',
-  };
-
-  return (
-    <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 100 100">
-      {/* Background circle */}
-      <circle
-        cx="50"
-        cy="50"
-        r="45"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="8"
-        className="text-secondary"
-      />
-      {/* Progress circle */}
-      <circle
-        cx="50"
-        cy="50"
-        r="45"
-        fill="none"
-        strokeWidth="8"
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-        className={`transition-all duration-100 ${colorMap[color]}`}
-      />
-    </svg>
-  );
-}
