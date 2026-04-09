@@ -329,6 +329,7 @@ function handleDisconnect(io: Server, socket: Socket, state: SocketHandlerState)
       state.relayConnections.delete(socket.id);
       state.racerRelays.delete(racerName);
       state.strategyCache.delete(racerName);
+      state.lastTelemetry.delete(racerName);
 
       // End sharing session
       const disconnectShareCode = state.sharingCodes.get(racerName);
@@ -355,30 +356,39 @@ function handleDisconnect(io: Server, socket: Socket, state: SocketHandlerState)
   });
 }
 
+const SHARE_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
+
 function handleViewerJoin(io: Server, socket: Socket, state: SocketHandlerState): void {
   socket.on('join:share', (data: { code: string; viewerId?: string }) => {
+    // Validate share code format
+    if (!data.code || !SHARE_CODE_PATTERN.test(data.code)) {
+      socket.emit('sharing:error', { error: 'Invalid session code format' });
+      return;
+    }
+
     const session = state.registry.getSession(data.code);
     if (!session) {
       socket.emit('sharing:error', { error: 'Session not found or expired' });
       return;
     }
 
-    const viewerId = data.viewerId || socket.id;
+    const viewerId = (data.viewerId || socket.id).slice(0, 64); // cap length
     const added = state.registry.addViewer(data.code, viewerId);
     if (!added) {
       socket.emit('sharing:error', { error: 'Session full (max 10 viewers)' });
       return;
     }
 
+    const racerName = session.racerName;
     socket.join(`share:${data.code}`);
     socket.emit('sharing:joined', {
       code: data.code,
-      racerName: session.racerName,
+      racerName,
       viewerCount: session.viewers.size,
     });
 
-    // Notify driver of viewer count change
-    const driverSocketId = state.racerRelays.get(session.racerName);
+    // Notify driver of viewer count change (look up current socket ID)
+    const driverSocketId = state.racerRelays.get(racerName);
     if (driverSocketId) {
       io.to(driverSocketId).emit('sharing:viewers', {
         code: data.code,
@@ -389,10 +399,12 @@ function handleViewerJoin(io: Server, socket: Socket, state: SocketHandlerState)
     // Clean up on viewer disconnect
     socket.on('disconnect', () => {
       state.registry.removeViewer(data.code, viewerId);
-      if (driverSocketId) {
+      // Look up driver socket ID at disconnect time (not captured at join time)
+      const currentDriverSocketId = state.racerRelays.get(racerName);
+      if (currentDriverSocketId) {
         const updatedSession = state.registry.getSession(data.code);
         if (updatedSession) {
-          io.to(driverSocketId).emit('sharing:viewers', {
+          io.to(currentDriverSocketId).emit('sharing:viewers', {
             code: data.code,
             viewerCount: updatedSession.viewers.size,
           });
