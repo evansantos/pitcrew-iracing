@@ -6,7 +6,8 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
-import { telemetryRoutes } from './modules/telemetry/index.js';
+import { createTelemetryRoutes, createStrategyRoutes } from './modules/telemetry/index.js';
+import { createSessionRoutes } from './modules/sessions/index.js';
 import { sessionRoutes } from './modules/session/index.js';
 import { raceEngineerRoutes } from './modules/race-engineer/index.js';
 import { RaceEngineerLLM } from './services/ai/race-engineer-llm.js';
@@ -82,8 +83,13 @@ async function start() {
     };
   });
 
+  // Initialize socket state before route registrations so routes can reference it
+  const socketState = createSocketState();
+
   // Register API routes
-  await fastify.register(telemetryRoutes, { prefix: '/api/telemetry' });
+  await fastify.register(createTelemetryRoutes(socketState), { prefix: '/api/telemetry' });
+  await fastify.register(createStrategyRoutes(socketState), { prefix: '/api/strategy' });
+  await fastify.register(createSessionRoutes(fileStore), { prefix: '/api/sessions' });
   await fastify.register(sessionRoutes, { prefix: '/api/session' });
   await fastify.register(raceEngineerRoutes, { prefix: '/api/race-engineer' });
 
@@ -144,7 +150,6 @@ async function start() {
   const racerSessions = new Map<string, string>();
 
   // Set up Socket.IO handlers with FileStore integration
-  const socketState = createSocketState();
   registerSocketHandlers(io, socketState, [
     {
       onTelemetry: (racerName, telemetry) => {

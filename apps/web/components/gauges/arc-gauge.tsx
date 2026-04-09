@@ -53,14 +53,20 @@ export function ArcGauge({
 
   targetRef.current = value;
 
-  // Smooth value interpolation via requestAnimationFrame
+  // Spring-damper needle physics
   useEffect(() => {
     let raf: number;
+    let velocity = 0;
+    const spring = 0.15;
+    const damping = 0.85;
+
     const animate = () => {
       setSmoothValue((prev) => {
-        const diff = targetRef.current - prev;
-        if (Math.abs(diff) < 0.5) return targetRef.current;
-        return prev + diff * 0.15; // lerp factor
+        const target = targetRef.current;
+        const diff = target - prev;
+        velocity = (velocity + diff * spring) * damping;
+        if (Math.abs(diff) < 0.1 && Math.abs(velocity) < 0.01) return target;
+        return prev + velocity;
       });
       raf = requestAnimationFrame(animate);
     };
@@ -125,6 +131,21 @@ export function ArcGauge({
     ctx.lineWidth = arcWidth;
     ctx.lineCap = 'round';
     ctx.stroke();
+
+    // Redline glow when in last zone
+    const lastZone = zones[zones.length - 1];
+    if (lastZone && pctHundred >= lastZone.start) {
+      ctx.shadowColor = lastZone.color;
+      ctx.shadowBlur = 15;
+      ctx.beginPath();
+      const redlineStart = START_ANGLE + (lastZone.start / 100) * SWEEP;
+      ctx.arc(cx, cy, outerRadius - arcWidth / 2, redlineStart, activeEnd);
+      ctx.strokeStyle = lastZone.color;
+      ctx.lineWidth = arcWidth;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
 
     // Draw needle
     const needleAngle = START_ANGLE + pct * SWEEP;

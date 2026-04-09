@@ -5,6 +5,8 @@ import { usePathname } from 'next/navigation';
 
 const navItems = [
   { href: '/', label: 'Dashboard' },
+  { href: '/analysis', label: 'Analysis' },
+  { href: '/replay', label: 'Replay' },
   { href: '/tools/ibt-import', label: 'Import .IBT' },
   { href: '/tools/setup-compare', label: 'Setup Compare' },
 ];
