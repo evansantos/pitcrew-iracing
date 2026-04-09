@@ -50,13 +50,13 @@ export function ArcGauge({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [smoothValue, setSmoothValue] = useState(value);
   const targetRef = useRef(value);
+  const velocityRef = useRef(0);
 
   targetRef.current = value;
 
   // Spring-damper needle physics
   useEffect(() => {
     let raf: number;
-    let velocity = 0;
     const spring = 0.15;
     const damping = 0.85;
 
@@ -64,9 +64,9 @@ export function ArcGauge({
       setSmoothValue((prev) => {
         const target = targetRef.current;
         const diff = target - prev;
-        velocity = (velocity + diff * spring) * damping;
-        if (Math.abs(diff) < 0.1 && Math.abs(velocity) < 0.01) return target;
-        return prev + velocity;
+        velocityRef.current = (velocityRef.current + diff * spring) * damping;
+        if (Math.abs(diff) < 0.1 && Math.abs(velocityRef.current) < 0.01) return target;
+        return prev + velocityRef.current;
       });
       raf = requestAnimationFrame(animate);
     };
