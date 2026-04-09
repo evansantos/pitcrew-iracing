@@ -1,8 +1,11 @@
 import fs from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import type { FastifyPluginAsync } from 'fastify';
 import type { FrameQuery } from '@iracing-race-engineer/shared';
 import { FileStore } from '../../services/file-store/index.js';
+
+/** Validate session ID is a UUID to prevent path traversal */
+const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 
 export function createSessionRoutes(fileStore: FileStore): FastifyPluginAsync {
   return async (fastify) => {
@@ -70,6 +73,12 @@ export function createSessionRoutes(fileStore: FileStore): FastifyPluginAsync {
     // DELETE /:id — end session and remove directory from disk
     fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
       const { id } = request.params;
+
+      // Validate UUID format to prevent path traversal
+      if (!UUID_PATTERN.test(id)) {
+        return reply.code(400).send({ error: 'Invalid session ID format' });
+      }
+
       const index = fileStore.getSessionIndex(id);
       if (!index) {
         return reply.code(404).send({ error: 'Session not found', sessionId: id });
@@ -78,7 +87,11 @@ export function createSessionRoutes(fileStore: FileStore): FastifyPluginAsync {
       fileStore.endSession(id);
 
       const dataDir: string = fileStore['dataDir'];
-      const sessionDir = join(dataDir, id);
+      const sessionDir = resolve(dataDir, id);
+      // Verify resolved path stays within dataDir
+      if (!sessionDir.startsWith(resolve(dataDir))) {
+        return reply.code(400).send({ error: 'Invalid session ID' });
+      }
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true });
       }
