@@ -10,6 +10,7 @@ const navItems = [
   { href: '/tools/ibt-import', label: 'Import .IBT' },
   { href: '/tools/setup-compare', label: 'Setup Compare' },
   { href: '/stats', label: 'Stats' },
+  { href: '/leaderboard', label: 'Leaderboard' },
 ];
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
