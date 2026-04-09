@@ -87,22 +87,25 @@ export function optimizeStints(params: RaceParams): StintPlan[] {
 
   const activeCompounds = compounds.length > 0 ? compounds : DEFAULT_COMPOUNDS;
 
-  // DP: dp[lapsRemaining] = { totalTime, plan }
-  // For each number of remaining laps, find the best strategy.
-  // We try all possible first-stint lengths and compounds, then recurse.
+  // DP stores stints as relative (laps only), reconstructs absolute lap numbers after.
+  interface RelativeStint {
+    compound: string;
+    laps: number;
+    expectedTime: number;
+  }
+
   interface DPEntry {
     totalTime: number;
-    stints: Stint[];
+    stints: RelativeStint[];
     pitStops: number;
   }
 
   const cache = new Map<number, DPEntry[]>();
 
-  function solve(lapsLeft: number, lapOffset: number): DPEntry[] {
+  function solve(lapsLeft: number): DPEntry[] {
     if (lapsLeft <= 0) return [{ totalTime: 0, stints: [], pitStops: 0 }];
 
-    const cacheKey = lapsLeft;
-    if (cache.has(cacheKey)) return cache.get(cacheKey)!;
+    if (cache.has(lapsLeft)) return cache.get(lapsLeft)!;
 
     const candidates: DPEntry[] = [];
 
@@ -111,10 +114,8 @@ export function optimizeStints(params: RaceParams): StintPlan[] {
 
       for (let stintLen = Math.min(maxStint, lapsLeft); stintLen >= Math.min(5, lapsLeft); stintLen--) {
         const sTime = stintTime(baseLapTime, compound, stintLen);
-        const stint: Stint = {
+        const stint: RelativeStint = {
           compound: compound.name,
-          startLap: currentLap + lapOffset,
-          endLap: currentLap + lapOffset + stintLen,
           laps: stintLen,
           expectedTime: sTime,
         };
@@ -122,15 +123,13 @@ export function optimizeStints(params: RaceParams): StintPlan[] {
         const remaining = lapsLeft - stintLen;
 
         if (remaining === 0) {
-          // No more stints needed
           candidates.push({
             totalTime: sTime,
             stints: [stint],
             pitStops: 0,
           });
         } else if (remaining >= 3) {
-          // Need another stint (minimum 3 laps)
-          const subResults = solve(remaining, lapOffset + stintLen);
+          const subResults = solve(remaining);
           for (const sub of subResults) {
             candidates.push({
               totalTime: sTime + pitStopTime + sub.totalTime,
@@ -142,14 +141,30 @@ export function optimizeStints(params: RaceParams): StintPlan[] {
       }
     }
 
-    // Sort by total time and keep top 3
     candidates.sort((a, b) => a.totalTime - b.totalTime);
     const best = candidates.slice(0, 3);
-    cache.set(cacheKey, best);
+    cache.set(lapsLeft, best);
     return best;
   }
 
-  const results = solve(remainingLaps, 0);
+  const dpResults = solve(remainingLaps);
+
+  // Reconstruct absolute lap numbers from relative stints
+  const results = dpResults.map(r => {
+    let lap = currentLap;
+    const stints: Stint[] = r.stints.map(s => {
+      const stint: Stint = {
+        compound: s.compound,
+        startLap: lap,
+        endLap: lap + s.laps,
+        laps: s.laps,
+        expectedTime: s.expectedTime,
+      };
+      lap += s.laps;
+      return stint;
+    });
+    return { stints, totalTime: r.totalTime, pitStops: r.pitStops };
+  });
 
   return results.map(r => ({
     stints: r.stints,

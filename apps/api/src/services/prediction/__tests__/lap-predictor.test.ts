@@ -73,7 +73,7 @@ describe('LapPredictor', () => {
     expect(result.confidence).toBeGreaterThan(0.9);
   });
 
-  // 4. addLap triggers refit after 5 laps
+  // 4. addLap triggers refit after 5 laps (needs >= columns in feature matrix)
   it('addLap triggers refit after 5 laps', () => {
     // Use fully varied features to ensure X^T X is not singular
     const laps = [

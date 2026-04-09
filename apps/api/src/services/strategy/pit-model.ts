@@ -89,20 +89,28 @@ export class PitModel {
     const lapsRemaining = totalLaps - currentLap;
 
     // Scenario A: pit now
-    // Pit stop time + run remaining laps at base pace (fresh fuel, no weight penalty)
+    // Pit stop time + remaining laps on fresh tires at base pace
     const pitNowTime = this.pitLaneTime + lapsRemaining * baseLapTime;
 
-    // Scenario B: stay out N more laps, then pit
-    // N = laps of fuel remaining (integer)
+    // Scenario B: stay out N more laps on degrading tires, then pit
+    // N = laps of fuel remaining
     const lapsOfFuel = fuelPerLap > 0 ? Math.floor(currentFuel / fuelPerLap) : 0;
     const lapsBeforePit = Math.min(lapsOfFuel, lapsRemaining);
     const lapsAfterPit = lapsRemaining - lapsBeforePit;
 
-    // Running lapsBeforePit laps on current (heavier) fuel, then pit time, then lapsAfterPit at base pace
-    // Simplified: treat current stint as base pace (no weight delta modeled for brief stints)
+    // Staying out incurs tire degradation + fuel weight penalty on current stint
+    // Model: each additional lap on old tires adds degradation (0.05s per lap squared)
+    // and fuel weight costs fuelWeightEffect per kg per lap
+    let stayOutTime = 0;
+    for (let i = 0; i < lapsBeforePit; i++) {
+      const degradation = 0.05 * (i + 1); // progressive tire deg
+      const fuelWeight = (currentFuel - i * fuelPerLap) * this.fuelWeightEffect;
+      stayOutTime += baseLapTime + degradation + fuelWeight;
+    }
+
     const pitLaterTime =
-      lapsBeforePit * baseLapTime +
-      this.pitLaneTime +
+      stayOutTime +
+      (lapsAfterPit > 0 ? this.pitLaneTime : 0) +
       lapsAfterPit * baseLapTime;
 
     const delta = pitNowTime - pitLaterTime;

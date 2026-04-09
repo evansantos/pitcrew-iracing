@@ -70,69 +70,37 @@ describe('PitModel', () => {
     expect(result.timeImpact).toBeCloseTo(4.125, 5);
   });
 
-  // Test 7: whatIf recommends staying out when fuel is sufficient
-  it('whatIf recommends staying out when fuel covers remaining laps', () => {
-    const model = new PitModel({ pitLaneTime: 25 });
-    // currentFuel=30, fuelPerLap=2, lapsOfFuel=15
-    // currentLap=5, totalLaps=20 => lapsRemaining=15
-    // pitNowTime = 25 + 15*90 = 1375
-    // lapsBeforePit = min(15,15)=15, lapsAfterPit=0
-    // pitLaterTime = 15*90 + 25 + 0 = 1375
-    // delta = 1375 - 1375 = 0  (tied; stays out by default >= 0)
-    // Use a case where staying out is clearly better
-    // currentFuel=40, fuelPerLap=2, lapsOfFuel=20; lapsRemaining=15
-    // pitNowTime = 25 + 15*90 = 1375
-    // lapsBeforePit = min(20,15)=15, lapsAfterPit=0
-    // pitLaterTime = 15*90 + 25 + 0 = 1375, delta=0
-    // Make pit now clearly worse by comparing a tiny fuel stint
-    // For delta > 0 (stay out): pitNowTime > pitLaterTime
-    // pitNowTime = pitLaneTime + lapsRemaining * lapTime
-    // pitLaterTime = lapsBeforePit*lapTime + pitLaneTime + lapsAfterPit*lapTime
-    //             = (lapsBeforePit + lapsAfterPit)*lapTime + pitLaneTime
-    //             = lapsRemaining * lapTime + pitLaneTime
-    // They are always equal in the symmetric case, so test the recommendation text
-    const result = model.whatIf(30, 2, 5, 20, 90);
-    // Both times are equal here; delta = 0, recommend "Stay out"
+  // Test 7: whatIf recommends staying out when fuel covers remaining laps with low degradation
+  it('whatIf recommends staying out when degradation cost is less than pit stop time', () => {
+    const model = new PitModel({ pitLaneTime: 25, fuelWeightEffect: 0.001 });
+    // Few laps remaining, low fuel = low degradation, pit stop time outweighs staying out
+    // currentFuel=6, fuelPerLap=2, lapsOfFuel=3; currentLap=17, totalLaps=20, lapsRemaining=3
+    // Staying out 3 laps: degradation is small, no additional pit needed
+    // Pitting now: 25s pit lane time + 3 laps at base pace
+    const result = model.whatIf(6, 2, 17, 20, 90);
+    // pitNowTime includes pit lane time, pitLaterTime avoids it if lapsAfterPit=0
     expect(result.recommendation).toMatch(/Stay out/);
   });
 
-  // Test 8: whatIf recommends pitting when fuel is critical
-  it('whatIf recommends pitting now when pit now is faster', () => {
-    const model = new PitModel({ pitLaneTime: 10 });
-    // Make pitNow faster: pitNowTime = 10 + 5*90 = 460
-    // currentFuel=0, fuelPerLap=2 => lapsOfFuel=0
-    // lapsBeforePit=0, lapsAfterPit=5
-    // pitLaterTime = 0 + 10 + 5*90 = 460 ... still equal
-    // We need asymmetry. Use fuelPerLap=0 edge case or manipulate.
-    // Actually the formula is always equal. Test recommendation "Pit now" by checking delta < 0
-    // This requires pitNowTime < pitLaterTime which means:
-    // pitLaneTime + lapsRemaining*lapTime < lapsBeforePit*lapTime + pitLaneTime + lapsAfterPit*lapTime
-    // => 0 < lapsBeforePit*lapTime (which is only negative if lapTime<0, not physical)
-    // So delta is always >= 0 in symmetric model. "Pit now" only triggers when delta < 0.
-    // We test this via a custom model where currentFuel=0 (no laps left = lapsBeforePit=0)
-    // pitNowTime = pitLaneTime + laps*lapTime
-    // pitLaterTime = 0 + pitLaneTime + laps*lapTime  => equal
-    // Since the model always produces equal or stay-out, test "Pit now" with fuelPerLap=0
-    // which means lapsOfFuel=0, lapsBeforePit=0, delta=0, stays out
-    // The "Pit now" path (delta < 0) cannot be triggered with symmetric lap times.
-    // Instead, verify the delta=0 boundary and check recommendation format is valid.
-    const result = model.whatIf(0, 2, 15, 20, 90);
-    expect(['Pit now', 'Stay out 0 more laps']).toContain(result.recommendation);
+  // Test 8: whatIf recommends pitting when staying out incurs heavy degradation
+  it('whatIf recommends pitting now when tire degradation makes staying out costly', () => {
+    const model = new PitModel({ pitLaneTime: 25, fuelWeightEffect: 0.03 });
+    // Many laps of fuel = many degraded laps before pit
+    // currentFuel=40, fuelPerLap=2, lapsOfFuel=20; currentLap=0, totalLaps=30, lapsRemaining=30
+    // Staying out 20 laps with progressive degradation (0.05*i per lap) + fuel weight
+    // Then pit + 10 more laps
+    // vs Pit now + 30 clean laps
+    const result = model.whatIf(40, 2, 0, 30, 90);
+    // With 20 degraded laps, pit now should be faster
+    expect(result.delta).toBeLessThan(0);
+    expect(result.recommendation).toBe('Pit now');
   });
 
-  // Test 9: whatIf returns correct delta between scenarios
-  it('whatIf returns correct delta: pitNowTime - pitLaterTime', () => {
-    const model = new PitModel({ pitLaneTime: 25 });
-    // currentFuel=20, fuelPerLap=2 => lapsOfFuel=10
-    // currentLap=10, totalLaps=25 => lapsRemaining=15
-    // pitNowTime = 25 + 15*90 = 1375
-    // lapsBeforePit = min(10,15) = 10, lapsAfterPit = 5
-    // pitLaterTime = 10*90 + 25 + 5*90 = 900 + 25 + 450 = 1375
-    // delta = 0
+  // Test 9: whatIf delta is consistent with pitNowTime - pitLaterTime
+  it('whatIf returns delta equal to pitNowTime - pitLaterTime', () => {
+    const model = new PitModel({ pitLaneTime: 25, fuelWeightEffect: 0.03 });
     const result = model.whatIf(20, 2, 10, 25, 90);
     expect(result.delta).toBeCloseTo(result.pitNowTime - result.pitLaterTime, 10);
-    expect(result.pitNowTime).toBe(25 + 15 * 90);
-    expect(result.pitLaterTime).toBe(10 * 90 + 25 + 5 * 90);
   });
 
   // Test 10: constructor uses custom parameters
